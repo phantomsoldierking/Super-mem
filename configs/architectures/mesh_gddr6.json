@@ -1,0 +1,40 @@
+{
+  "name": "mesh_gddr6",
+  "label": "Mesh + SRAM + GDDR6",
+  "analogue": "Tenstorrent Blackhole class",
+  "philosophy": "Software-managed distributed SRAM in every core, cheap GDDR6 for capacity.",
+  "compute": {
+    "matrix_tflops": 370,
+    "vector_tflops": 25,
+    "matrix_efficiency": 0.6
+  },
+  "sram": {
+    "capacity_bytes": 220200960,
+    "bandwidth_GBps": 24000,
+    "latency_ns": 60,
+    "energy_pj_per_bit": 0.3,
+    "role": "scratchpad"
+  },
+  "dram": {
+    "standard": "GDDR6",
+    "org_preset": "GDDR6_16Gb_x16",
+    "timing_preset": "GDDR6_14000_1350mV_double",
+    "channels": 8,
+    "overrides": {
+      "nRFCab": 367,
+      "nRFCpb": 105,
+      "channel_width": 32
+    },
+    "capacity_bytes": 34359738368,
+    "energy_pj_per_bit": 7.5,
+    "note": "8 x 32-bit (ganged pairs of 16-bit) channels at 14 Gb/s = 448 GB/s"
+  },
+  "interconnect": {
+    "link_GBps": 400,
+    "hop_latency_us": 1.5,
+    "energy_pj_per_bit": 8.0,
+    "note": "on-card Ethernet"
+  },
+  "tdp_w": 300,
+  "op_overhead_us": 2.0
+}

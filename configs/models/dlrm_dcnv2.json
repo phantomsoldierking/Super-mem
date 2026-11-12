@@ -1,0 +1,25 @@
+{
+  "family": "recsys",
+  "name": "DLRM-DCNv2 (synthetic)",
+  "tables": 26,
+  "total_rows": 250000000,
+  "embedding_dim": 128,
+  "lookups_per_table": 10,
+  "dense_features": 13,
+  "bottom_mlp": [
+    512,
+    256,
+    128
+  ],
+  "top_mlp": [
+    1024,
+    1024,
+    512,
+    256,
+    1
+  ],
+  "cross_layers": 3,
+  "weight_bytes": 2,
+  "act_bytes": 2,
+  "source": "MLPerf Inference DLRMv2 shape (Criteo 1TB multi-hot); table sizes synthetic"
+}

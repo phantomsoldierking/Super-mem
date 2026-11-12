@@ -1,0 +1,37 @@
+{
+  "name": "wafer_sram",
+  "label": "Wafer-scale SRAM",
+  "analogue": "Cerebras WSE-3 class",
+  "philosophy": "Tens of GB of SRAM on one wafer; extreme bandwidth, long on-wafer distances.",
+  "compute": {
+    "matrix_tflops": 62500,
+    "vector_tflops": 6000,
+    "matrix_efficiency": 0.4
+  },
+  "sram": {
+    "capacity_bytes": 47244640256,
+    "bandwidth_GBps": 21000000,
+    "latency_ns": 200,
+    "energy_pj_per_bit": 0.3,
+    "role": "resident"
+  },
+  "dram": null,
+  "spill": {
+    "standard": "DDR5",
+    "org_preset": "DDR5_16Gb_x8",
+    "timing_preset": "DDR5_4800AN",
+    "channels": 2,
+    "capacity_bytes": 68719476736,
+    "energy_pj_per_bit": 15.0,
+    "note": "external memory; only for CPU-trace spill"
+  },
+  "interconnect": {
+    "link_GBps": 150,
+    "hop_latency_us": 2.0,
+    "energy_pj_per_bit": 8.0,
+    "note": "wafer-to-wafer Ethernet"
+  },
+  "tdp_w": 23000,
+  "op_overhead_us": 5.0,
+  "calibration_note": "op_overhead_us and hop latency chosen so Llama-3.1-8B/70B batch-1 decode lands near publicly reported token rates for this class of system; per-op synchronisation and pipeline latency are not otherwise modelled"
+}

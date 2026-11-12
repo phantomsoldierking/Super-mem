@@ -1,0 +1,262 @@
+{
+  "cpu_ddr5": {
+    "dram": {
+      "standard": "DDR5",
+      "org_preset": "DDR5_16Gb_x8",
+      "timing_preset": "DDR5_4800AN",
+      "channels": 16,
+      "capacity_bytes": 549755813888,
+      "energy_pj_per_bit": 15.0,
+      "note": "8 DIMM channels = 16 x 32-bit sub-channels"
+    },
+    "peak_GBps": 307.2,
+    "tCK_ps": 416,
+    "patterns": {
+      "stream_read": {
+        "achieved_GBps": 284.967,
+        "efficiency": 0.927626953125,
+        "requests": 120000,
+        "row_hit_rate": 0.9234803657880581,
+        "avg_loaded_read_latency_ns": 247.38093536
+      },
+      "kv_page_gather": {
+        "achieved_GBps": 284.26203124799997,
+        "efficiency": 0.9253321329687499,
+        "requests": 120000,
+        "row_hit_rate": 0.0,
+        "avg_loaded_read_latency_ns": 260.819
+      },
+      "row_gather_256B": {
+        "achieved_GBps": 274.33396094,
+        "efficiency": 0.8930141957682292,
+        "requests": 120000,
+        "row_hit_rate": 6.69904538603249e-05,
+        "avg_loaded_read_latency_ns": 178.914915218
+      },
+      "random_64B": {
+        "achieved_GBps": 263.424226563,
+        "efficiency": 0.8575007375097656,
+        "requests": 120000,
+        "row_hit_rate": 0.00010863933412445053,
+        "avg_loaded_read_latency_ns": 133.668163356
+      },
+      "stream_rw_2to1": {
+        "achieved_GBps": 271.255478517,
+        "efficiency": 0.8829930941308594,
+        "requests": 120000,
+        "row_hit_rate": 0.909917341458898,
+        "avg_loaded_read_latency_ns": 303.559581832
+      }
+    }
+  },
+  "gpu_hbm3": {
+    "dram": {
+      "standard": "HBM3",
+      "org_preset": "HBM3_16Gb_8hi",
+      "timing_preset": "HBM3_6400Mbps",
+      "channels": 64,
+      "capacity_bytes": 85899345920,
+      "energy_pj_per_bit": 3.9,
+      "note": "64 x 64-bit channels at 6.4 Gb/s = 3.28 TB/s"
+    },
+    "peak_GBps": 3276.8,
+    "tCK_ps": 625,
+    "patterns": {
+      "stream_read": {
+        "achieved_GBps": 2432.546,
+        "efficiency": 0.7423541259765624,
+        "requests": 128000,
+        "row_hit_rate": 0.9416322314049587,
+        "avg_loaded_read_latency_ns": 241.82257890625
+      },
+      "kv_page_gather": {
+        "achieved_GBps": 1635.3737148280002,
+        "efficiency": 0.49907645105834963,
+        "requests": 128000,
+        "row_hit_rate": 0.0,
+        "avg_loaded_read_latency_ns": 368.1202853613282
+      },
+      "row_gather_256B": {
+        "achieved_GBps": 1511.699138663,
+        "efficiency": 0.4613339656564331,
+        "requests": 128000,
+        "row_hit_rate": 0.0009843837364056605,
+        "avg_loaded_read_latency_ns": 260.55335969726565
+      },
+      "random_64B": {
+        "achieved_GBps": 1460.125080075,
+        "efficiency": 0.4455948120346069,
+        "requests": 128000,
+        "row_hit_rate": 0.0009631629640156,
+        "avg_loaded_read_latency_ns": 237.6629236328125
+      },
+      "stream_rw_2to1": {
+        "achieved_GBps": 2146.381394516,
+        "efficiency": 0.6550236189318848,
+        "requests": 128000,
+        "row_hit_rate": 0.9387773150455854,
+        "avg_loaded_read_latency_ns": 267.64465174804684
+      }
+    }
+  },
+  "gpu_hbm4": {
+    "dram": {
+      "standard": "HBM4",
+      "org_preset": "HBM4_32Gb_8Hi",
+      "timing_preset": "HBM4_8000Mbps",
+      "channels": 128,
+      "capacity_bytes": 309237645312,
+      "energy_pj_per_bit": 3.0,
+      "note": "128 x 64-bit channels at 8 Gb/s = 8.2 TB/s"
+    },
+    "peak_GBps": 8192.0,
+    "tCK_ps": 500,
+    "patterns": {
+      "stream_read": {
+        "achieved_GBps": 5953.904,
+        "efficiency": 0.726794921875,
+        "requests": 256000,
+        "row_hit_rate": 0.9473140495867769,
+        "avg_loaded_read_latency_ns": 197.08298778515623
+      },
+      "kv_page_gather": {
+        "achieved_GBps": 3180.9249746020005,
+        "efficiency": 0.38829650568872076,
+        "requests": 256000,
+        "row_hit_rate": 0.004072283023670145,
+        "avg_loaded_read_latency_ns": 342.67395401953127
+      },
+      "row_gather_256B": {
+        "achieved_GBps": 2930.051062508,
+        "efficiency": 0.3576722488413086,
+        "requests": 256000,
+        "row_hit_rate": 0.002415268284212354,
+        "avg_loaded_read_latency_ns": 248.40372930078124
+      },
+      "random_64B": {
+        "achieved_GBps": 2829.94747656,
+        "efficiency": 0.3454525728222656,
+        "requests": 256000,
+        "row_hit_rate": 0.0021894073636542625,
+        "avg_loaded_read_latency_ns": 229.95904732421874
+      },
+      "stream_rw_2to1": {
+        "achieved_GBps": 5100.917066427,
+        "efficiency": 0.6226705403353271,
+        "requests": 256000,
+        "row_hit_rate": 0.943852906248997,
+        "avg_loaded_read_latency_ns": 267.99409457421876
+      }
+    }
+  },
+  "mesh_gddr6": {
+    "dram": {
+      "standard": "GDDR6",
+      "org_preset": "GDDR6_16Gb_x16",
+      "timing_preset": "GDDR6_14000_1350mV_double",
+      "channels": 8,
+      "overrides": {
+        "nRFCab": 367,
+        "nRFCpb": 105,
+        "channel_width": 32
+      },
+      "capacity_bytes": 34359738368,
+      "energy_pj_per_bit": 7.5,
+      "note": "8 x 32-bit (ganged pairs of 16-bit) channels at 14 Gb/s = 448 GB/s"
+    },
+    "peak_GBps": 448.0,
+    "tCK_ps": 572,
+    "patterns": {
+      "stream_read": {
+        "achieved_GBps": 382.089886717,
+        "efficiency": 0.8528792114218751,
+        "requests": 120000,
+        "row_hit_rate": 0.893641947415106,
+        "avg_loaded_read_latency_ns": 101.088646802
+      },
+      "kv_page_gather": {
+        "achieved_GBps": 192.14920312799998,
+        "efficiency": 0.4289044712678571,
+        "requests": 120000,
+        "row_hit_rate": 0.494253931080629,
+        "avg_loaded_read_latency_ns": 192.37807260099999
+      },
+      "row_gather_256B": {
+        "achieved_GBps": 96.20442578000001,
+        "efficiency": 0.21474202183035715,
+        "requests": 120000,
+        "row_hit_rate": 0.0007021532700280861,
+        "avg_loaded_read_latency_ns": 282.1242736455
+      },
+      "random_64B": {
+        "achieved_GBps": 95.06725586,
+        "efficiency": 0.21220369611607143,
+        "requests": 120000,
+        "row_hit_rate": 0.00043404951503313804,
+        "avg_loaded_read_latency_ns": 214.9624457695
+      },
+      "stream_rw_2to1": {
+        "achieved_GBps": 301.365304688,
+        "efficiency": 0.6726904122499999,
+        "requests": 120000,
+        "row_hit_rate": 0.8324629239061296,
+        "avg_loaded_read_latency_ns": 121.38845518800001
+      }
+    }
+  },
+  "npu_lpddr5": {
+    "dram": {
+      "standard": "LPDDR5",
+      "org_preset": "LPDDR5_16Gb_x16",
+      "timing_preset": "LPDDR5_6400",
+      "channels": 8,
+      "capacity_bytes": 68719476736,
+      "energy_pj_per_bit": 4.5,
+      "note": "8 x 32-bit (ganged pairs of 16-bit) channels at 6.4 Gb/s = 205 GB/s",
+      "overrides": {
+        "channel_width": 32
+      }
+    },
+    "peak_GBps": 204.8,
+    "tCK_ps": 1250,
+    "patterns": {
+      "stream_read": {
+        "achieved_GBps": 188.163265624,
+        "efficiency": 0.9187659454296874,
+        "requests": 120000,
+        "row_hit_rate": 0.904551084627745,
+        "avg_loaded_read_latency_ns": 139.3961403125
+      },
+      "kv_page_gather": {
+        "achieved_GBps": 132.155800779,
+        "efficiency": 0.6452919959912109,
+        "requests": 120000,
+        "row_hit_rate": 0.4947695858314728,
+        "avg_loaded_read_latency_ns": 255.27317499999998
+      },
+      "row_gather_256B": {
+        "achieved_GBps": 77.3040625,
+        "efficiency": 0.37746124267578124,
+        "requests": 120000,
+        "row_hit_rate": 0.00033454886086112874,
+        "avg_loaded_read_latency_ns": 371.19254109375
+      },
+      "random_64B": {
+        "achieved_GBps": 75.18015429799999,
+        "efficiency": 0.3670905971582031,
+        "requests": 120000,
+        "row_hit_rate": 0.0002672032999607545,
+        "avg_loaded_read_latency_ns": 283.31353671875
+      },
+      "stream_rw_2to1": {
+        "achieved_GBps": 163.67105664,
+        "efficiency": 0.7991750812499999,
+        "requests": 120000,
+        "row_hit_rate": 0.8501059721372862,
+        "avg_loaded_read_latency_ns": 205.605228125
+      }
+    }
+  },
+  "lpu_sram": null,
+  "wafer_sram": null
+}

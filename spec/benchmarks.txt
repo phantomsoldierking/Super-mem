@@ -1,0 +1,9 @@
+# SPEC CPU 2026 rate benchmarks traced (C/C++ only: no Fortran compiler)
+772.marian_r
+782.lbm_r
+710.omnetpp_r
+777.zstd_r
+708.sqlite_r
+750.sealcrypto_r
+706.stockfish_r
+767.nest_r

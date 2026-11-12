@@ -1,0 +1,17 @@
+{
+  "_comment": "Inference scenarios evaluated on every architecture. phase: decode = one generated token per sequence at the given context; prefill = whole prompt.",
+  "scenarios": [
+    {"id": "llama8b_decode_b1",     "model": "llama3_1_8b",  "phase": "decode",  "batch": 1,    "context": 2048},
+    {"id": "llama8b_decode_b32",    "model": "llama3_1_8b",  "phase": "decode",  "batch": 32,   "context": 2048},
+    {"id": "llama8b_decode_longctx","model": "llama3_1_8b",  "phase": "decode",  "batch": 8,    "context": 32768},
+    {"id": "llama8b_prefill",       "model": "llama3_1_8b",  "phase": "prefill", "batch": 1,    "context": 2048},
+    {"id": "llama70b_decode_b1",    "model": "llama3_1_70b", "phase": "decode",  "batch": 1,    "context": 2048},
+    {"id": "llama70b_decode_b32",   "model": "llama3_1_70b", "phase": "decode",  "batch": 32,   "context": 4096},
+    {"id": "llama70b_prefill",      "model": "llama3_1_70b", "phase": "prefill", "batch": 1,    "context": 2048},
+    {"id": "mixtral_decode_b1",     "model": "mixtral_8x7b", "phase": "decode",  "batch": 1,    "context": 2048},
+    {"id": "mixtral_decode_b32",    "model": "mixtral_8x7b", "phase": "decode",  "batch": 32,   "context": 2048},
+    {"id": "resnet50_b1",           "model": "resnet50",     "phase": "forward", "batch": 1},
+    {"id": "resnet50_b64",          "model": "resnet50",     "phase": "forward", "batch": 64},
+    {"id": "dlrm_b2048",            "model": "dlrm_dcnv2",   "phase": "forward", "batch": 2048}
+  ]
+}

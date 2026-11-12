@@ -1,0 +1,9 @@
+{
+  "family": "cnn",
+  "name": "ResNet-50",
+  "image": 224,
+  "classes": 1000,
+  "weight_bytes": 2,
+  "act_bytes": 2,
+  "source": "He et al., Deep Residual Learning (CVPR 2016), bottleneck [3,4,6,3]"
+}

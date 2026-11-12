@@ -1,0 +1,38 @@
+{
+  "name": "npu_lpddr5",
+  "label": "NPU + SRAM + LPDDR5",
+  "analogue": "Qualcomm Cloud AI 100 / d-Matrix class",
+  "philosophy": "Large on-chip SRAM for working set, low-power LPDDR for capacity; efficiency first.",
+  "compute": {
+    "matrix_tflops": 200,
+    "vector_tflops": 12,
+    "matrix_efficiency": 0.6
+  },
+  "sram": {
+    "capacity_bytes": 150994944,
+    "bandwidth_GBps": 12000,
+    "latency_ns": 40,
+    "energy_pj_per_bit": 0.3,
+    "role": "scratchpad"
+  },
+  "dram": {
+    "standard": "LPDDR5",
+    "org_preset": "LPDDR5_16Gb_x16",
+    "timing_preset": "LPDDR5_6400",
+    "channels": 8,
+    "capacity_bytes": 68719476736,
+    "energy_pj_per_bit": 4.5,
+    "note": "8 x 32-bit (ganged pairs of 16-bit) channels at 6.4 Gb/s = 205 GB/s",
+    "overrides": {
+      "channel_width": 32
+    }
+  },
+  "interconnect": {
+    "link_GBps": 32,
+    "hop_latency_us": 2.0,
+    "energy_pj_per_bit": 10.0,
+    "note": "PCIe Gen4/5 x8"
+  },
+  "tdp_w": 75,
+  "op_overhead_us": 2.0
+}

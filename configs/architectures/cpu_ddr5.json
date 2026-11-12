@@ -1,0 +1,35 @@
+{
+  "name": "cpu_ddr5",
+  "label": "CPU + DDR5",
+  "analogue": "Server CPU (Xeon/EPYC class)",
+  "philosophy": "Cache hierarchy optimised for latency; modest DRAM bandwidth, very large capacity.",
+  "compute": {
+    "matrix_tflops": 120,
+    "vector_tflops": 8,
+    "matrix_efficiency": 0.6
+  },
+  "sram": {
+    "capacity_bytes": 100663296,
+    "bandwidth_GBps": 3000,
+    "latency_ns": 14,
+    "energy_pj_per_bit": 0.6,
+    "role": "cache"
+  },
+  "dram": {
+    "standard": "DDR5",
+    "org_preset": "DDR5_16Gb_x8",
+    "timing_preset": "DDR5_4800AN",
+    "channels": 16,
+    "capacity_bytes": 549755813888,
+    "energy_pj_per_bit": 15.0,
+    "note": "8 DIMM channels = 16 x 32-bit sub-channels"
+  },
+  "interconnect": {
+    "link_GBps": 64,
+    "hop_latency_us": 1.0,
+    "energy_pj_per_bit": 10.0,
+    "note": "UPI / PCIe-class"
+  },
+  "tdp_w": 350,
+  "op_overhead_us": 2.0
+}

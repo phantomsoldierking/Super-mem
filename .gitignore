@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tracer/build/
+traces/
+results/cache/
+spec/.compat-lib/
+spec/*.log
+results/*.log
+cpu2026-*.iso

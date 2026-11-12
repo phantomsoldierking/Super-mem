@@ -1,0 +1,35 @@
+{
+  "name": "gpu_hbm4",
+  "label": "GPU + HBM4",
+  "analogue": "Next-gen HBM4 accelerator (Rubin/TPU class)",
+  "philosophy": "Doubles HBM interface width and rate; same cache-based hierarchy.",
+  "compute": {
+    "matrix_tflops": 2500,
+    "vector_tflops": 120,
+    "matrix_efficiency": 0.7
+  },
+  "sram": {
+    "capacity_bytes": 134217728,
+    "bandwidth_GBps": 16000,
+    "latency_ns": 120,
+    "energy_pj_per_bit": 0.8,
+    "role": "cache"
+  },
+  "dram": {
+    "standard": "HBM4",
+    "org_preset": "HBM4_32Gb_8Hi",
+    "timing_preset": "HBM4_8000Mbps",
+    "channels": 128,
+    "capacity_bytes": 309237645312,
+    "energy_pj_per_bit": 3.0,
+    "note": "128 x 64-bit channels at 8 Gb/s = 8.2 TB/s"
+  },
+  "interconnect": {
+    "link_GBps": 900,
+    "hop_latency_us": 0.8,
+    "energy_pj_per_bit": 4.0,
+    "note": "next-gen scale-up link"
+  },
+  "tdp_w": 1200,
+  "op_overhead_us": 3.0
+}

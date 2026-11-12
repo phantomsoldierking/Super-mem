@@ -1,0 +1,37 @@
+{
+  "name": "lpu_sram",
+  "label": "LPU (SRAM only)",
+  "analogue": "Groq LPU class",
+  "philosophy": "No DRAM: all weights/state resident in on-chip SRAM, scale-out across many chips.",
+  "compute": {
+    "matrix_tflops": 188,
+    "vector_tflops": 20,
+    "matrix_efficiency": 0.8
+  },
+  "sram": {
+    "capacity_bytes": 241172480,
+    "bandwidth_GBps": 80000,
+    "latency_ns": 30,
+    "energy_pj_per_bit": 0.25,
+    "role": "resident"
+  },
+  "dram": null,
+  "spill": {
+    "standard": "DDR5",
+    "org_preset": "DDR5_16Gb_x8",
+    "timing_preset": "DDR5_4800AN",
+    "channels": 2,
+    "capacity_bytes": 68719476736,
+    "energy_pj_per_bit": 15.0,
+    "note": "host memory over PCIe; only for CPU-trace spill"
+  },
+  "interconnect": {
+    "link_GBps": 330,
+    "hop_latency_us": 0.6,
+    "energy_pj_per_bit": 4.0,
+    "note": "deterministic chip-to-chip"
+  },
+  "tdp_w": 300,
+  "op_overhead_us": 2.0,
+  "calibration_note": "op_overhead_us and hop latency chosen so Llama-3.1-8B/70B batch-1 decode lands near publicly reported token rates for this class of system; per-op synchronisation and pipeline latency are not otherwise modelled"
+}

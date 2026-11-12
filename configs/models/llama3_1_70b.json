@@ -1,0 +1,17 @@
+{
+  "family": "llm",
+  "name": "Llama-3.1-70B",
+  "layers": 80,
+  "hidden": 8192,
+  "intermediate": 28672,
+  "heads": 64,
+  "kv_heads": 8,
+  "head_dim": 128,
+  "vocab": 128256,
+  "experts": 1,
+  "top_k": 1,
+  "weight_bytes": 2,
+  "kv_bytes": 2,
+  "act_bytes": 2,
+  "source": "https://github.com/meta-llama/llama-models/blob/main/models/sku_list.py"
+}

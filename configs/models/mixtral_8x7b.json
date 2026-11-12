@@ -1,0 +1,17 @@
+{
+  "family": "llm",
+  "name": "Mixtral-8x7B (MoE)",
+  "layers": 32,
+  "hidden": 4096,
+  "intermediate": 14336,
+  "heads": 32,
+  "kv_heads": 8,
+  "head_dim": 128,
+  "vocab": 32000,
+  "experts": 8,
+  "top_k": 2,
+  "weight_bytes": 2,
+  "kv_bytes": 2,
+  "act_bytes": 2,
+  "source": "https://huggingface.co/mistralai/Mixtral-8x7B-v0.1/blob/main/config.json"
+}

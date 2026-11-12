@@ -1,0 +1,35 @@
+{
+  "name": "gpu_hbm3",
+  "label": "GPU + HBM3",
+  "analogue": "H100 SXM class",
+  "philosophy": "Massive off-chip HBM bandwidth behind a modest hardware-managed L2.",
+  "compute": {
+    "matrix_tflops": 989,
+    "vector_tflops": 67,
+    "matrix_efficiency": 0.7
+  },
+  "sram": {
+    "capacity_bytes": 52428800,
+    "bandwidth_GBps": 7000,
+    "latency_ns": 120,
+    "energy_pj_per_bit": 0.8,
+    "role": "cache"
+  },
+  "dram": {
+    "standard": "HBM3",
+    "org_preset": "HBM3_16Gb_8hi",
+    "timing_preset": "HBM3_6400Mbps",
+    "channels": 64,
+    "capacity_bytes": 85899345920,
+    "energy_pj_per_bit": 3.9,
+    "note": "64 x 64-bit channels at 6.4 Gb/s = 3.28 TB/s"
+  },
+  "interconnect": {
+    "link_GBps": 450,
+    "hop_latency_us": 0.8,
+    "energy_pj_per_bit": 5.0,
+    "note": "NVLink 4, per direction"
+  },
+  "tdp_w": 700,
+  "op_overhead_us": 3.0
+}
