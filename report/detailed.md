@@ -17,9 +17,9 @@ Summary of outcomes:
   access patterns that correspond to inference traffic classes.
 * An LLVM 23 pass plugin + runtime (`tracer/`) that turns any C/C++ program into a Ramulator trace; it was
   used to build and trace SPEC CPU 2026 from the supplied ISO.
-* Findings (Sections 5–7): SRAM-resident designs win batch-1 decode latency by 8–12x but need tens to hundreds
+* Findings (Sections 5–7): SRAM-resident designs win batch-1 decode latency by 6–9x but need tens to hundreds
   of chips and lose on throughput per chip and per watt; HBM is the most balanced; DRAM efficiency on random
-  access differs by 4x between technologies; on general-purpose code the large, slow on-chip SRAMs of AI chips
+  access differs by up to 3.6x between technologies; on general-purpose code the large, slow on-chip SRAMs of AI chips
   help only bandwidth-bound programs and hurt latency-bound ones.
 
 ## 1. Goal and what existed before
@@ -34,7 +34,7 @@ hand-written banked-SRAM model; a Cairo-drawn PDF; and the SPEC CPU 2026 ISO, un
 * Only two architectures and one workload family; the "Llama 8B" results replayed 1/4096 of the traffic.
 * Ticking Ramulator from Python made realistic sizes infeasible (minutes per microsecond of simulated time).
 * HBM3 was driven with 32 B requests and the default row-bank-column mapper, which (as measured here) reaches
-  only ~40% of pin bandwidth on streams; the 4-node SRAM reference had a hypothetical 64 GiB of SRAM.
+  only about half of pin bandwidth on streams; the 4-node SRAM reference had a hypothetical 64 GiB of SRAM.
 * No general-purpose workloads, so the "different workloads" part of the goal was not addressed.
 
 The prototype was therefore replaced rather than extended. It is not shipped (it is superseded and its
@@ -73,11 +73,12 @@ For each architecture it builds one controller per channel: FR-FCFS scheduler, o
 
 | Issue | Evidence | Fix |
 |---|---|---|
-| Default `RoBaRaCoCh` mapper put consecutive lines in one bank group | HBM3 stream: 40% of pin BW | `MOP4CLXOR` mapper: HBM3 74%, HBM4 73% |
+| Default `RoBaRaCoCh` mapper put consecutive lines in one bank group | HBM3 stream: 51% of pin BW | `MOP4CLXOR` mapper: HBM3 and HBM4 99% |
 | LPDDR5/GDDR6 channels move 32 B; 64 B lines skipped every other channel | channel 1 received 0 requests | gang 16-bit channels into 32-bit pairs (64 B per access, same total BW) |
 | HBM pseudo-channels carry 32 B; SimpleO3 sends 64 B and Ramulator rejects it | `size_bytes 64 > tx_bytes 32` | 64 B payload with doubled burst length (two back-to-back BL8 bursts to the open row) |
 | GDDR6 preset lacks refresh timings | `unresolved timings nRFCpb, nRFCab` | nRFCab = 210 ns, nRFCpb = 60 ns |
 | SimpleO3 LLC uses `sets-1` as a bit mask; 96/50/144/210/230 MiB caches have non-power-of-two set counts | code inspection of `llc.cpp` | choose power-of-two sets and round associativity (e.g. 96 MiB = 65,536 sets x 24 ways) |
+| HBM3/HBM4 controllers tick at half-CK (`tick_multiplier = 2`); the preset CK was used for the SimpleO3 clock ratio and for converting cycles to ns | HBM ran at half speed in SPEC replay; HBM latencies reported 2x | use the tick period (312/250 ps); HBM SPEC replays re-run |
 
 **Access-pattern calibration.** Five synthetic traces, each ≥120k requests (2,000 per channel for wide
 systems), are replayed with Ramulator's `LoadStoreTrace` frontend: sequential reads (weight streaming),
@@ -91,10 +92,10 @@ controller-reported throughput summed over channels; it is cached in `results/ca
 
 **What it shows.** DDR5 keeps 86–93% of its bandwidth for every pattern: it has many banks (32 per
 sub-channel) relative to its modest data rate, so bank-level parallelism hides row misses. The fast
-interfaces do not: HBM3/HBM4 keep only 45%/35% of their bandwidth on random 64 B accesses, and GDDR6 keeps
-only 21% on random rows because 16 banks per channel cannot cover row-cycle time at 14 Gb/s. LPDDR5 sits in between.
-For inference this means weight streaming gets 73–93% of the datasheet number, paged-KV gathers 39–64% (DDR5 92%),
-and embedding lookups 21–89%.
+interfaces do not: HBM3/HBM4 stream at 99% but keep only 58%/46% of their bandwidth on random 64 B accesses,
+LPDDR5 45%, and GDDR6 only 24–25% on random lines and rows because 16 banks per channel cannot cover the
+row-cycle time at 14 Gb/s. For inference this means weight streaming gets 83–99% of the datasheet number,
+paged-KV gathers 48–73% (DDR5 93%), and embedding lookups 25–89%.
 
 ### 3.2 The AI operator model
 
@@ -134,8 +135,9 @@ were tuned, so that Llama batch-1 decode lands near public token rates:
 {{public_check}}
 
 The model is within about 1.6x of these public figures (which themselves vary across software releases and
-quantization choices), and the HBM GPU sits at 74% of its pin-bandwidth bound, consistent with the
-calibrated stream efficiency.
+quantization choices). The HBM GPU reaches {{gpu_bound_pct}} of its pin-bandwidth bound (all DRAM bytes per token
+over pin bandwidth); the rest is per-operator launch overhead and the KV-cache gathers, which run below
+stream efficiency.
 
 ### 3.3 The SPEC CPU 2026 ISO
 
@@ -211,7 +213,7 @@ memory streams, holding the core constant.
 
 * **Model sizes and FLOPs** match the published models (unit tests).
 * **Bandwidth physics**: calibrated bandwidth never exceeds pin bandwidth; random < stream for every DRAM
-  (unit test on LPDDR5); GPU batch-1 Llama-8B time is within 1.4x of the pin-bandwidth bound.
+  (unit test on LPDDR5); GPU batch-1 Llama-8B throughput is {{gpu_bound_pct}} of the pin-bandwidth bound.
 * **Public token rates** for SRAM-only systems within ~1.6x (table above).
 * **Tracer**: a STREAM-triad kernel produces ≥90% L2 misses per L1 miss, non-zero dirty write-backs, and
   an instruction total within 1% of the executed count (test).
@@ -221,6 +223,12 @@ memory streams, holding the core constant.
   is retried while the MSHRs are full are counted again (slow LLCs appeared to miss up to 6x more than fast
   ones of a smaller size). Timing is unaffected; the report uses DRAM accesses per kilo-instruction, derived
   from the DRAM controllers, instead of those counters.
+* **Reproducibility of the DRAM calibration**: an independent review rebuilt Ramulator from the pinned
+  submodule (7bead6c) and found that the calibration first committed did not reproduce; it had been made with
+  an earlier local build of the library. The calibration, AI study and figures in this report were
+  regenerated with the pinned build (HBM3/HBM4 stream efficiency 74/73% became 99%, random-access efficiency
+  rose by 3–13 points, DDR5 is unchanged). The bandwidth counter was cross-checked against requests served
+  per controller tick. Ramulator is now built from source with `make ramulator`.
 * **Accounting**: step time equals compute-bound + memory-bound + communication + overhead time for every
   architecture (test). `make test` runs 12 tests.
 
@@ -231,8 +239,8 @@ memory streams, holding the core constant.
 {{ai_overview}}
 
 **Decode is a memory-streaming problem.** At batch 1, every generated token reads all weights and the
-KV cache once. Time follows achieved memory bandwidth: CPU/DDR5 0.12x, LPDDR5 NPU 0.08x, GDDR6 mesh 0.17x
-and HBM4 2.2x of the HBM3 GPU. The SRAM-resident systems are 8–10x faster for Llama-8B and 10–12x for
+KV cache once. Time follows achieved memory bandwidth: CPU/DDR5 0.10x, LPDDR5 NPU 0.07x, GDDR6 mesh 0.12x
+and HBM4 2.2x of the HBM3 GPU. The SRAM-resident systems are 6–8x faster for Llama-8B and 8–9x for
 Llama-70B because they read weights at tens of TB/s — but they get there by spreading the model over
 76 (8B) to 654 (70B) LPU-class chips or 1–4 wafers.
 
@@ -240,20 +248,20 @@ Llama-70B because they read weights at tens of TB/s — but they get there by sp
 
 {{fig:04_ai_per_chip|Figure 5. Throughput per chip relative to GPU + HBM3.}}
 
-**Per chip, HBM wins.** Normalized per chip, the LPU-class system delivers about a tenth of an HBM3 GPU's
-tokens/s on Llama-8B and about a thirtieth on Llama-70B; only GPU + HBM4 (2.1–2.7x) and the wafer, whose single "chip" holds 44 GB of
-SRAM, beat it per chip. Batching widens the gap: Figure 7 shows GPU throughput per chip growing ~35x from
+**Per chip, HBM wins.** Normalized per chip, the LPU-class system delivers about a twelfth of an HBM3 GPU's
+tokens/s on Llama-8B and about a thirty-seventh on Llama-70B; on the LLM scenarios only GPU + HBM4 (2.0–2.7x) and the wafer, whose single "chip" holds 44 GB of
+SRAM, beat it per chip. Batching widens the gap: Figure 7 shows GPU throughput per chip growing ~32x from
 batch 1 to 256, while the SRAM systems must add chips to hold the growing KV cache.
 
 {{fig:06_time_breakdown|Figure 6. Where step time goes. DRAM systems are memory-bound in decode and compute-bound in prefill; SRAM systems are bound by inter-chip communication and per-operator synchronization.}}
 
-**The bottleneck moves rather than disappears.** For DRAM-based designs, 87–100% of decode time is spent
+**The bottleneck moves rather than disappears.** For DRAM-based designs, 83–100% of decode time is spent
 waiting on memory. For the LPU-class system, 68–79% of the time is all-reduce latency across hundreds of
 chips and the rest per-operator synchronization; for the wafer, on-wafer synchronization dominates. Prefill
-(2,048 tokens) is compute-bound on every system that holds the model on one to five chips, so memory
-architecture matters little there; peak FLOPS decide. The exceptions are the large SRAM-only deployments
-(77 LPU-class chips for Llama-8B; 655 chips or 4 wafers for Llama-70B), where the all-reduces of
-2,048-token activations dominate.
+(2,048 tokens) is compute-bound on every DRAM-based system and on a single wafer, so memory architecture
+matters little there; peak FLOPS decide. The exceptions are the multi-chip SRAM-only deployments (77
+LPU-class chips for Llama-8B; 655 chips or 4 wafers for Llama-70B), where the all-reduces of 2,048-token
+activations take 71–92% of the time.
 
 {{fig:08_batch_sweep|Figure 7. Llama-8B decode throughput per chip as batch grows (2k context).}}
 
@@ -273,16 +281,19 @@ SRAM for all experts (432 LPU-class chips). At batch 32 nearly all experts are a
 **Non-LLM workloads.** ResNet-50 at batch 1 (51 MB of weights) fits in every scratchpad, and every system
 lands within 0.7–1.3x of the GPU — memory architecture barely matters for a small CNN.
 At batch 64 its peak activations (≈155 MB) plus 51 MB of weights no longer fit the 144 MB NPU SRAM, traffic
-spills to LPDDR5 and it falls to 0.09x, while compute-rich designs win. DLRM at batch 2,048 is compute-bound
-on the HBM GPUs and gather-bound on GDDR6/LPDDR5, whose 21%/38% row-gather efficiency over 64 GB of tables
-costs them 2–4.5x; HBM4 doubles HBM3, and holding the tables in SRAM takes 296 LPU-class chips.
+spills to LPDDR5 and it falls to 0.08x, while compute-rich designs win. DLRM at batch 2,048 is compute-bound
+on the HBM GPUs and gather-bound on GDDR6/LPDDR5, whose 25%/45% row-gather efficiency over 64 GB of tables
+costs them 2–4x; HBM4 doubles HBM3, and holding the tables in SRAM takes 296 LPU-class chips.
 
 {{fig:07_energy|Figure 9. Energy per token. Top: dynamic memory + link energy. Bottom: chips x TDP x time, an upper bound that includes static power.}}
 
-**Energy.** Dynamic memory energy per token is 10–50x lower on SRAM-resident systems (0.25–0.3 pJ/bit vs
-3–15 pJ/bit for DRAM). But once static power is counted (TDP x time), a 76-chip LPU-class system uses about
-as much energy per Llama-8B token as a CPU at batch 1, and ~4x more than an HBM3 GPU; at batch 32 the HBM
-GPUs are the most energy-efficient (0.21–0.26 J/token vs ≥0.34 J for every other design). SRAM-only designs buy latency with power.
+**Energy.** Memory-access energy per token is 13–16x lower on SRAM-resident systems than on the HBM3 GPU
+(about 50x lower than DDR5), because SRAM costs 0.25–0.3 pJ/bit against 3.9–15 pJ/bit for DRAM. Inter-chip
+traffic eats into that: counting link energy, the LPU-class system is still 11–14x better at batch 1 but
+only 1.1–4x better at batch 32, when hundreds of chips exchange larger activations. Once static power is
+counted (TDP x time), a 76-chip LPU-class system uses about as much energy per Llama-8B token as a CPU at
+batch 1 and ~5x more than an HBM3 GPU; at batch 32 the HBM GPUs are the most energy-efficient
+(0.17–0.20 J/token vs ≥0.31 J for every other design). SRAM-only designs buy latency with power.
 
 ### 5.1 Per-scenario tables
 
@@ -364,18 +375,18 @@ almost exactly:
 
 ## 7. Conclusions
 
-1. **Decode is a memory-bandwidth problem, prefill a compute problem.** On every DRAM-based design 87–100% of
+1. **Decode is a memory-bandwidth problem, prefill a compute problem.** On every DRAM-based design 83–100% of
    batch-1 decode time is spent waiting for memory, and speed tracks the bandwidth the DRAM actually
-   achieves (Ramulator), not its pin rate. HBM4 is 2.2x faster than HBM3; DDR5 and LPDDR5 are 8–12x slower.
-2. **SRAM-only designs buy latency with chips.** Holding the whole model in SRAM gives 8–12x lower batch-1
+   achieves (Ramulator), not its pin rate. HBM4 is 2.2x faster than HBM3; DDR5 and LPDDR5 are 10–14x slower.
+2. **SRAM-only designs buy latency with chips.** Holding the whole model in SRAM gives 6–9x lower batch-1
    latency than an HBM3 GPU, matching public Groq/Cerebras token rates within ~1.6x, but needs 76–654
    LPU-class chips or 1–4 wafers, makes all-reduce latency and per-op synchronization the bottleneck, and
-   delivers 1/10–1/30 of the GPU's throughput per chip and ~4x its energy per token once static power counts.
+   delivers 1/12–1/37 of the GPU's throughput per chip and ~5x its energy per token once static power counts.
 3. **Capacity cliffs, not gradual slowdowns.** Long contexts, large batches and MoE experts grow state
    faster than SRAM grows; SRAM designs then add chips in steps and lose per-chip throughput abruptly
    (2.3x for a wafer system at batch 128), while HBM degrades smoothly.
-4. **Access pattern matters as much as peak bandwidth.** HBM keeps only 35–45% and GDDR6 21% of its bandwidth
-   on random 64 B accesses (DDR5 86%), so paged KV caches and embedding gathers see a fraction of datasheet
+4. **Access pattern matters as much as peak bandwidth.** HBM keeps only 46–58%, LPDDR5 45% and GDDR6 24% of its
+   bandwidth on random 64 B accesses (DDR5 86%), so paged KV caches and embedding gathers see a fraction of datasheet
    bandwidth on exactly the fastest interfaces.
 5. **The same memory systems are poor for general-purpose code.** On SPEC CPU 2026 traces built with the
    LLVM tracer, IPC follows LLC hit latency: geomean 0.83x (LPU) to 0.32x (wafer) of a CPU + DDR5 hierarchy,

@@ -142,3 +142,16 @@ def test_simpleo3_llc_geometry_is_power_of_two():
             assert sets & (sets - 1) == 0 and ways >= 16
             assert (total // cores) % 1024 == 0
             assert abs(total - a.cpu_llc_bytes(cores)) <= 0.02 * a.cpu_llc_bytes(cores)
+
+
+@pytest.mark.slow
+def test_controller_tick_period_includes_hbm_tick_multiplier():
+    """HBM3/HBM4 controllers tick at half-CK; cycle counts and the SimpleO3 clock
+    ratio must use the tick period, or HBM is simulated at half speed."""
+    from memarch.ramulator_backend import _ratio, dram_clock_ps
+
+    archs = {a.name: a for a in load_all()}
+    assert dram_clock_ps(archs["gpu_hbm3"].dram) == 312  # 625 ps CK / 2
+    assert dram_clock_ps(archs["gpu_hbm4"].dram) == 250  # 500 ps CK / 2
+    assert dram_clock_ps(archs["cpu_ddr5"].dram) == 416  # DDR5 ticks once per CK
+    assert _ratio(4.0, 312) == (5, 4)  # 4 GHz core : 3.2 GHz HBM3 controller

@@ -2,9 +2,12 @@ PY ?= .venv/bin/python
 SPEC_DIR ?= $(HOME)/spec/cpu2026
 export SPEC_DIR
 
-.PHONY: all venv tracer spec-install spec-build spec-trace calibrate ai spec figures report test
+.PHONY: all ramulator venv tracer spec-install spec-build spec-trace calibrate ai spec spec-smoke figures report test
 
 all: ai spec figures report
+
+ramulator:
+	cd ramulator2 && ./build.sh
 
 venv:
 	python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -33,6 +36,11 @@ ai:
 
 spec:
 	$(PY) -m memarch spec --jobs 10
+
+# One short replay into RAM (/dev/shm) to check the toolchain; results/ is untouched.
+SMOKE_OUT ?= /dev/shm/memarch-smoke
+spec-smoke:
+	$(PY) -m memarch spec --archs gpu_hbm3 --benchmarks 708.sqlite_r --cores 1 --insts 2000000 --jobs 1 --out $(SMOKE_OUT)
 
 figures:
 	$(PY) -m memarch figures

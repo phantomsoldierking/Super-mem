@@ -44,8 +44,16 @@ _CONTROLLERS = {"DDR5": "GenericDDR", "GDDR6": "GenericDDR", "LPDDR5": "LPDDR5",
 
 
 def dram_clock_ps(dram_cfg) -> int:
+    """Period of one controller tick in ps.
+
+    Ramulator counts controller cycles in ticks. For most standards a tick is one
+    CK, but HBM3/HBM4 use ``tick_multiplier = 2`` (half-CK ticks): the spec class
+    divides tCK_ps by the multiplier before the controller sees it. Cycle counts
+    from the controller (latencies, ``cycles``) and the frontend/memory clock
+    ratio must therefore use the tick period, not the preset CK."""
     r = ramulator()
-    return getattr(r.dram, dram_cfg["standard"]).timing_presets[dram_cfg["timing_preset"]]["tCK_ps"]
+    std = getattr(r.dram, dram_cfg["standard"])
+    return std.timing_presets[dram_cfg["timing_preset"]]["tCK_ps"] // getattr(std, "tick_multiplier", 1)
 
 
 def _dram_class(std):
@@ -143,12 +151,15 @@ def pattern_trace(pattern, n, line, span, seed=1):
     return out
 
 
-def calibrate(dram_cfg, patterns=None, requests=None, cache=True):
-    """Achieved bandwidth (GB/s) and efficiency per access pattern."""
+def calibrate(dram_cfg, patterns=None, requests=None, cache=True, refresh=False):
+    """Achieved bandwidth (GB/s) and efficiency per access pattern.
+
+    ``cache=True`` reads and writes results/cache/; ``refresh=True`` recomputes and
+    overwrites the cached entry; ``cache=False`` neither reads nor writes it."""
     patterns = patterns or list(PATTERNS)
     key = json.dumps(dram_cfg, sort_keys=True) + f"|n={requests}"
     cache_file = CACHE_DIR / f"calib_{hashlib.sha256(key.encode()).hexdigest()[:16]}.json"
-    if cache and cache_file.exists():
+    if cache and not refresh and cache_file.exists():
         data = json.loads(cache_file.read_text())
         if all(p in data["patterns"] for p in patterns):
             return data
@@ -183,8 +194,9 @@ def calibrate(dram_cfg, patterns=None, requests=None, cache=True):
                               row_hit_rate=hits / max(1, hits + misses + conflicts),
                               avg_loaded_read_latency_ns=(sum(lat) / len(lat)) * tck / 1000 if lat else None)
     data = dict(dram=dram_cfg, peak_GBps=peak, tCK_ps=tck, patterns=results)
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache_file.write_text(json.dumps(data, indent=2))
+    if cache:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(json.dumps(data, indent=2))
     return data
 
 

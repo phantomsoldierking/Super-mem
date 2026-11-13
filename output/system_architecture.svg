@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="800" viewBox="0 0 1400 800" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4a5363"/>
+    </marker>
+    <style>
+      .t  { font-size: 15px; font-weight: 700; fill: #1d2330; }
+      .s  { font-size: 12.5px; fill: #3d4555; }
+      .m  { font-family: DejaVu Sans Mono, Menlo, monospace; font-size: 12px; fill: #3d4555; }
+      .lane { font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+      .ln { stroke: #4a5363; stroke-width: 1.8; fill: none; marker-end: url(#ar); }
+      .lb { font-size: 11.5px; fill: #4a5363; font-style: italic; }
+    </style>
+  </defs>
+  <rect width="1400" height="800" fill="#ffffff"/>
+  <text x="700" y="38" text-anchor="middle" font-size="22" font-weight="700" fill="#1d2330">Memory Architectures of AI Inference Chips — System Architecture</text>
+
+  <!-- ===== Lane A: SPEC tracing ===== -->
+  <rect x="20" y="62" width="330" height="490" rx="14" fill="#eef4fc" stroke="#9cbbe3"/>
+  <text x="185" y="86" text-anchor="middle" class="lane" fill="#2f5f9e">SPEC CPU 2026 TRACING</text>
+
+  <rect x="40" y="102" width="290" height="70" rx="9" fill="#fff" stroke="#6f9bd6" stroke-width="1.5"/>
+  <text x="185" y="128" text-anchor="middle" class="t">SPEC CPU 2026 kit</text>
+  <text x="185" y="149" text-anchor="middle" class="s">cpu2026-1.0.1.iso → ~/spec/cpu2026</text>
+  <text x="185" y="164" text-anchor="middle" class="s">8 C/C++ rate benchmarks</text>
+
+  <rect x="40" y="200" width="290" height="88" rx="9" fill="#fff" stroke="#6f9bd6" stroke-width="1.5"/>
+  <text x="185" y="225" text-anchor="middle" class="t">runcpu build (clang -O2)</text>
+  <text x="185" y="246" text-anchor="middle" class="m">-fpass-plugin=libMemTracePass.so</text>
+  <text x="185" y="263" text-anchor="middle" class="s">LLVM pass at OptimizerLastEP: hooks on</text>
+  <text x="185" y="279" text-anchor="middle" class="s">every basic block, load, store, memcpy</text>
+
+  <rect x="40" y="316" width="290" height="104" rx="9" fill="#fff" stroke="#6f9bd6" stroke-width="1.5"/>
+  <text x="185" y="341" text-anchor="middle" class="t">Instrumented run + memtrace_rt</text>
+  <text x="185" y="362" text-anchor="middle" class="s">SKIP 30B → WARM 100M → TRACE 200M</text>
+  <text x="185" y="379" text-anchor="middle" class="s">private L1D 48 KiB + L2 2 MiB filter</text>
+  <text x="185" y="396" text-anchor="middle" class="s">first-touch page map</text>
+  <text x="185" y="412" text-anchor="middle" class="m">spec/trace_spec.py</text>
+
+  <rect x="40" y="448" width="290" height="80" rx="9" fill="#fff" stroke="#6f9bd6" stroke-width="1.5"/>
+  <text x="185" y="474" text-anchor="middle" class="t">traces/spec/*.trace</text>
+  <text x="185" y="495" text-anchor="middle" class="s">L2-miss stream (SimpleO3 format)</text>
+  <text x="185" y="513" text-anchor="middle" class="m">&lt;bubble&gt; &lt;addr&gt; [&lt;writeback&gt;]</text>
+
+  <path class="ln" d="M185 172 V198"/>
+  <path class="ln" d="M185 288 V314"/>
+  <path class="ln" d="M185 420 V446"/>
+
+  <!-- ===== Inputs ===== -->
+  <rect x="385" y="62" width="290" height="74" rx="9" fill="#fbf7ea" stroke="#d6bf6a" stroke-width="1.5"/>
+  <text x="530" y="88" text-anchor="middle" class="t">configs/architectures/</text>
+  <text x="530" y="108" text-anchor="middle" class="s">7 memory systems: SRAM size/role/latency,</text>
+  <text x="530" y="124" text-anchor="middle" class="s">DRAM standard + channels, links, TDP</text>
+
+  <rect x="705" y="62" width="290" height="74" rx="9" fill="#fbf7ea" stroke="#d6bf6a" stroke-width="1.5"/>
+  <text x="850" y="88" text-anchor="middle" class="t">configs/models, scenarios.json</text>
+  <text x="850" y="108" text-anchor="middle" class="s">Llama-3.1 8B/70B, Mixtral, ResNet-50,</text>
+  <text x="850" y="124" text-anchor="middle" class="s">DLRM — 12 inference scenarios</text>
+
+  <path class="ln" d="M530 136 V170"/>
+  <path class="ln" d="M850 136 V170"/>
+
+  <!-- ===== Lane B: memarch ===== -->
+  <rect x="370" y="172" width="640" height="476" rx="14" fill="#eef8f1" stroke="#8cc9a0"/>
+  <text x="690" y="196" text-anchor="middle" class="lane" fill="#2c7a47">memarch/ (PYTHON)</text>
+
+  <rect x="390" y="210" width="600" height="128" rx="9" fill="#fff" stroke="#5bb07a" stroke-width="1.5"/>
+  <text x="690" y="234" text-anchor="middle" class="t">ramulator_backend.py</text>
+  <rect x="405" y="248" width="280" height="78" rx="7" fill="#f3fbf6" stroke="#a9d9b9"/>
+  <text x="545" y="270" text-anchor="middle" class="t" font-size="13.5">DRAM calibration</text>
+  <text x="545" y="290" text-anchor="middle" class="s">5 patterns: stream, rw-stream,</text>
+  <text x="545" y="306" text-anchor="middle" class="s">paged-KV, embedding rows, random</text>
+  <text x="545" y="320" text-anchor="middle" class="s">→ achieved BW + latency</text>
+  <rect x="695" y="248" width="280" height="78" rx="7" fill="#f3fbf6" stroke="#a9d9b9"/>
+  <text x="835" y="270" text-anchor="middle" class="t" font-size="13.5">SimpleO3 trace replay</text>
+  <text x="835" y="290" text-anchor="middle" class="s">4-wide, 4 GHz core;</text>
+  <text x="835" y="306" text-anchor="middle" class="s">arch SRAM as 16-way LLC,</text>
+  <text x="835" y="320" text-anchor="middle" class="s">arch DRAM behind it</text>
+
+  <rect x="390" y="380" width="290" height="140" rx="9" fill="#fff" stroke="#5bb07a" stroke-width="1.5"/>
+  <text x="535" y="405" text-anchor="middle" class="t">ai_study.py</text>
+  <text x="535" y="426" text-anchor="middle" class="m">workloads.py + perf.py</text>
+  <text x="535" y="446" text-anchor="middle" class="s">operator graphs (FLOPs, bytes/class)</text>
+  <text x="535" y="463" text-anchor="middle" class="s">placement: cache/scratchpad/resident</text>
+  <text x="535" y="480" text-anchor="middle" class="s">max(compute, memory) + all-reduce</text>
+  <text x="535" y="497" text-anchor="middle" class="s">chips, latency, throughput, energy</text>
+  <text x="535" y="513" text-anchor="middle" class="s">+ batch / context sweeps</text>
+
+  <rect x="700" y="380" width="290" height="140" rx="9" fill="#fff" stroke="#5bb07a" stroke-width="1.5"/>
+  <text x="845" y="405" text-anchor="middle" class="t">cpu_study.py</text>
+  <text x="845" y="430" text-anchor="middle" class="s">every trace × arch × {1, 4} cores</text>
+  <text x="845" y="449" text-anchor="middle" class="s">warm: run(2N) − run(N)</text>
+  <text x="845" y="468" text-anchor="middle" class="s">4 cores: offset trace copies,</text>
+  <text x="845" y="485" text-anchor="middle" class="s">shared LLC + DRAM</text>
+  <text x="845" y="507" text-anchor="middle" class="s">IPC vs CPU + DDR5, DRAM acc./kinst</text>
+
+  <rect x="390" y="560" width="600" height="68" rx="9" fill="#fff" stroke="#5bb07a" stroke-width="1.5"/>
+  <text x="690" y="586" text-anchor="middle" class="t">figures.py  ·  __main__.py (CLI)</text>
+  <text x="690" y="608" text-anchor="middle" class="m">python -m memarch calibrate | ai | spec | figures</text>
+
+  <path class="ln" d="M545 380 V328"/>
+  <text x="553" y="360" class="lb">calibrated BW</text>
+  <path class="ln" d="M845 380 V328"/>
+  <text x="853" y="360" class="lb">IPC, DRAM stats</text>
+
+  <!-- traces into cpu_study -->
+  <path class="ln" d="M330 488 H352 V540 H845 V522"/>
+  <text x="595" y="535" class="lb">traces</text>
+
+  <!-- ===== Lane C: Ramulator + outputs ===== -->
+  <rect x="1045" y="210" width="335" height="128" rx="9" fill="#fdf1e8" stroke="#e0a070" stroke-width="1.5"/>
+  <text x="1212" y="238" text-anchor="middle" class="t">Ramulator 2.1 (C++)</text>
+  <text x="1212" y="260" text-anchor="middle" class="s">git submodule, pinned 7bead6c</text>
+  <text x="1212" y="278" text-anchor="middle" class="s">cycle-accurate DDR5 · HBM3 · HBM4</text>
+  <text x="1212" y="295" text-anchor="middle" class="s">GDDR6 · LPDDR5 controllers</text>
+  <text x="1212" y="317" text-anchor="middle" class="m">libramulator.so + nanobind</text>
+  <path d="M992 274 H1043" stroke="#4a5363" stroke-width="1.8" fill="none" marker-start="url(#ar)" marker-end="url(#ar)"/>
+
+  <rect x="1045" y="364" width="335" height="56" rx="9" fill="#fdf1e8" stroke="#e0a070" stroke-width="1.5"/>
+  <text x="1212" y="388" text-anchor="middle" class="t">results/cache/</text>
+  <text x="1212" y="408" text-anchor="middle" class="s">calibration cache (--fresh to rebuild)</text>
+  <path class="ln" d="M1212 338 V362"/>
+
+  <rect x="1045" y="446" width="335" height="74" rx="9" fill="#f3effb" stroke="#a790d6" stroke-width="1.5"/>
+  <text x="1212" y="472" text-anchor="middle" class="t">results/</text>
+  <text x="1212" y="492" text-anchor="middle" class="m">ai/  spec/  figures/</text>
+  <text x="1212" y="510" text-anchor="middle" class="s">CSV + JSON + PNG</text>
+  <path class="ln" d="M990 470 H1043"/>
+  <path class="ln" d="M990 594 H1020 V500 H1043"/>
+
+  <rect x="1045" y="560" width="335" height="74" rx="9" fill="#f3effb" stroke="#a790d6" stroke-width="1.5"/>
+  <text x="1212" y="586" text-anchor="middle" class="t">report/build_report.py</text>
+  <text x="1212" y="606" text-anchor="middle" class="s">detailed.md, summary.md templates</text>
+  <text x="1212" y="623" text-anchor="middle" class="s">{{tokens}} filled from results</text>
+  <path class="ln" d="M1212 520 V558"/>
+
+  <rect x="1045" y="674" width="335" height="66" rx="9" fill="#5b3fa0" stroke="#5b3fa0"/>
+  <text x="1212" y="701" text-anchor="middle" class="t" style="fill:#ffffff">output/*.pdf</text>
+  <text x="1212" y="722" text-anchor="middle" class="s" style="fill:#e8e0fa">detailed report + summary (headless Chromium)</text>
+  <path class="ln" d="M1212 634 V672"/>
+
+  <!-- ===== Lane D: tests / make ===== -->
+  <rect x="20" y="580" width="330" height="160" rx="14" fill="#f4f5f7" stroke="#c3c8d1"/>
+  <text x="185" y="604" text-anchor="middle" class="lane" fill="#555d6b">BUILD &amp; CHECK</text>
+  <text x="40" y="630" class="m">make ramulator venv tracer</text>
+  <text x="40" y="650" class="m">make spec-install spec-build</text>
+  <text x="40" y="670" class="m">make spec-trace</text>
+  <text x="40" y="690" class="m">make ai spec figures report</text>
+  <text x="40" y="710" class="m" xml:space="preserve">make spec-smoke   # 40 s check</text>
+  <text x="40" y="730" class="m" xml:space="preserve">make test         # pytest</text>
+
+  <!-- legend -->
+  <g font-size="12" fill="#3d4555">
+    <rect x="385" y="680" width="14" height="14" rx="3" fill="#eef4fc" stroke="#9cbbe3"/><text x="405" y="692">trace generation (LLVM)</text>
+    <rect x="575" y="680" width="14" height="14" rx="3" fill="#fbf7ea" stroke="#d6bf6a"/><text x="595" y="692">inputs</text>
+    <rect x="660" y="680" width="14" height="14" rx="3" fill="#eef8f1" stroke="#8cc9a0"/><text x="680" y="692">analysis (Python)</text>
+    <rect x="820" y="680" width="14" height="14" rx="3" fill="#fdf1e8" stroke="#e0a070"/><text x="840" y="692">simulator</text>
+    <rect x="925" y="680" width="14" height="14" rx="3" fill="#f3effb" stroke="#a790d6"/><text x="945" y="692">outputs</text>
+    <text x="385" y="722" fill="#6a7282">Only memory systems differ between architectures: same core for SPEC, same operator graphs for AI.</text>
+  </g>
+</svg>

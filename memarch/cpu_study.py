@@ -55,7 +55,8 @@ def _prepare_core_traces(trace: Path, cores: int, max_lines: int, workdir: Path)
     paths = []
     for c in range(cores):
         p = workdir / f"{trace.stem}.core{c}.trace"
-        if not p.exists():
+        # Copies are keyed by max_lines (directory name) and rebuilt if the source trace is newer.
+        if not p.exists() or p.stat().st_mtime < trace.stat().st_mtime:
             off = c * span
             with open(p, "w") as f:
                 for parts in lines:
@@ -101,7 +102,10 @@ def _simulate(job):
 
 
 def run(benchmarks=None, archs=None, core_counts=(1, 4), insts=None, mc_lines=1_500_000, jobs=None,
-        trace_dir=None, out_dir=None):
+        trace_dir=None, out_dir=None, merge=False):
+    """Replay every (benchmark, architecture, core count). With ``merge=True`` the new
+    results replace matching entries of an existing spec_results.json instead of
+    overwriting the whole file (used to re-run a subset of architectures)."""
     trace_dir = Path(trace_dir or TRACE_DIR / "spec")
     out_dir = Path(out_dir or RESULTS_DIR / "spec")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -117,7 +121,8 @@ def run(benchmarks=None, archs=None, core_counts=(1, 4), insts=None, mc_lines=1_
         meta[t.stem] = _trace_info(t)
         for cores in core_counts:
             lines = 10**12 if cores == 1 else mc_lines
-            paths, n = _prepare_core_traces(t, cores, lines, trace_dir / "multicore" / str(cores)) if cores > 1 \
+            paths, n = _prepare_core_traces(t, cores, lines, trace_dir / "multicore" / f"{cores}c_{lines}l") \
+                if cores > 1 \
                 else ([t], None)
             if n is None:
                 n = meta[t.stem]["trace_insts"]
@@ -134,6 +139,12 @@ def run(benchmarks=None, archs=None, core_counts=(1, 4), insts=None, mc_lines=1_
             print(f"{r['benchmark']:>16} {r['arch']:>11} x{r['cores']}: IPC {r['ipc_per_core']:.3f} "
                   f"DRAM {r['dram_GBps']:.1f} GB/s "
                   f"lat {r['dram_avg_read_latency_ns']:.0f} ns", flush=True)
+    if merge and (out_dir / "spec_results.json").exists():
+        new = {(r["benchmark"], r["arch"], r["cores"]) for r in results}
+        old = json.loads((out_dir / "spec_results.json").read_text())
+        results += [r for r in old["results"] if (r["benchmark"], r["arch"], r["cores"]) not in new]
+        meta = {**old["traces"], **meta}
+        arch_names = [a.name for a in load_all()]
     postprocess(results)
     results.sort(key=lambda r: (r["benchmark"], r["cores"], arch_names.index(r["arch"])))
     (out_dir / "spec_results.json").write_text(json.dumps(dict(core=CORE, traces=meta, results=results), indent=2))

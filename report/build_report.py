@@ -7,7 +7,7 @@ Templates (hand-written prose) live in report/*.md and contain tokens that are
 replaced with tables and figures generated from results/:
 
     {{arch_table}}  {{calib_table}}  {{ai_overview}}  {{ai_table:<scenario>}}
-    {{spec_traces}} {{spec_table:<cores>}}  {{public_check}}  {{fig:<name>|<caption>}}
+    {{spec_traces}} {{spec_table:<cores>}}  {{public_check}}  {{gpu_bound_pct}}  {{fig:<name>|<caption>}}
 
 Outputs:
     output/memory_architecture_study_detailed.pdf  (from report/detailed.md)
@@ -123,11 +123,18 @@ def public_check(d, _):
         r = d.ai_row(w, a)
         rows.append([w, lab[a], r["chips"], f"{r['throughput_per_s']:,.0f}", pub, src])
     gpu = d.ai_row("llama8b_decode_b1", "gpu_hbm3")
-    a = next(x for x in d.archs if x.name == "gpu_hbm3")
     bound = d.calib["gpu_hbm3"]["peak_GBps"] * 1e9 / (gpu["dram_bytes"])
     rows.append(["llama8b_decode_b1", lab["gpu_hbm3"], gpu["chips"], f"{gpu['throughput_per_s']:,.0f}",
-                 f"<= {bound:,.0f} (pin-bandwidth bound)", "weights / 3.28 TB/s"])
+                 f"<= {bound:,.0f} (pin-bandwidth bound)",
+                 f"{gpu['dram_bytes'] / 1e9:.1f} GB DRAM traffic per token / {d.calib['gpu_hbm3']['peak_GBps'] / 1000:.2f} TB/s"])
     return table(["Scenario", "Model of", "Chips", "Model tokens/s", "Public figure tokens/s", "Source"], rows)
+
+
+def gpu_bound_pct(d, _):
+    """GPU + HBM3 Llama-8B batch-1 throughput as a share of its pin-bandwidth bound."""
+    gpu = d.ai_row("llama8b_decode_b1", "gpu_hbm3")
+    bound = d.calib["gpu_hbm3"]["peak_GBps"] * 1e9 / gpu["dram_bytes"]
+    return f"{gpu['throughput_per_s'] / bound:.0%}"
 
 
 def spec_traces(d, _):
@@ -171,7 +178,7 @@ def fig(_, arg):
 
 
 TOKENS = {"arch_table": arch_table, "calib_table": calib_table, "ai_table": ai_table, "ai_overview": ai_overview,
-          "public_check": public_check, "spec_traces": spec_traces, "spec_table": spec_table, "fig": fig}
+          "public_check": public_check, "gpu_bound_pct": gpu_bound_pct, "spec_traces": spec_traces, "spec_table": spec_table, "fig": fig}
 
 
 def render(text, d):

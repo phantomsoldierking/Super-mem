@@ -17,35 +17,35 @@
         "efficiency": 0.927626953125,
         "requests": 120000,
         "row_hit_rate": 0.9234803657880581,
-        "avg_loaded_read_latency_ns": 247.38093536
+        "avg_loaded_read_latency_ns": 247.79658009599999
       },
       "kv_page_gather": {
         "achieved_GBps": 284.26203124799997,
         "efficiency": 0.9253321329687499,
         "requests": 120000,
         "row_hit_rate": 0.0,
-        "avg_loaded_read_latency_ns": 260.819
+        "avg_loaded_read_latency_ns": 261.234720864
       },
       "row_gather_256B": {
         "achieved_GBps": 274.33396094,
         "efficiency": 0.8930141957682292,
         "requests": 120000,
         "row_hit_rate": 6.69904538603249e-05,
-        "avg_loaded_read_latency_ns": 178.914915218
+        "avg_loaded_read_latency_ns": 179.330616946
       },
       "random_64B": {
         "achieved_GBps": 263.424226563,
         "efficiency": 0.8575007375097656,
         "requests": 120000,
         "row_hit_rate": 0.00010863933412445053,
-        "avg_loaded_read_latency_ns": 133.668163356
+        "avg_loaded_read_latency_ns": 134.08031943799998
       },
       "stream_rw_2to1": {
-        "achieved_GBps": 271.255478517,
-        "efficiency": 0.8829930941308594,
+        "achieved_GBps": 270.71492187399997,
+        "efficiency": 0.8812334696419271,
         "requests": 120000,
-        "row_hit_rate": 0.909917341458898,
-        "avg_loaded_read_latency_ns": 303.559581832
+        "row_hit_rate": 0.9096356602867184,
+        "avg_loaded_read_latency_ns": 303.073254588
       }
     }
   },
@@ -60,42 +60,42 @@
       "note": "64 x 64-bit channels at 6.4 Gb/s = 3.28 TB/s"
     },
     "peak_GBps": 3276.8,
-    "tCK_ps": 625,
+    "tCK_ps": 312,
     "patterns": {
       "stream_read": {
-        "achieved_GBps": 2432.546,
-        "efficiency": 0.7423541259765624,
+        "achieved_GBps": 3255.552750016,
+        "efficiency": 0.9935158538867187,
         "requests": 128000,
-        "row_hit_rate": 0.9416322314049587,
-        "avg_loaded_read_latency_ns": 241.82257890625
+        "row_hit_rate": 0.9488636363636364,
+        "avg_loaded_read_latency_ns": 93.74839695975
       },
       "kv_page_gather": {
-        "achieved_GBps": 1635.3737148280002,
-        "efficiency": 0.49907645105834963,
+        "achieved_GBps": 2023.004859399,
+        "efficiency": 0.6173720884396362,
         "requests": 128000,
         "row_hit_rate": 0.0,
-        "avg_loaded_read_latency_ns": 368.1202853613282
+        "avg_loaded_read_latency_ns": 159.85349724825
       },
       "row_gather_256B": {
-        "achieved_GBps": 1511.699138663,
-        "efficiency": 0.4613339656564331,
+        "achieved_GBps": 1933.529238283,
+        "efficiency": 0.590066295862732,
         "requests": 128000,
-        "row_hit_rate": 0.0009843837364056605,
-        "avg_loaded_read_latency_ns": 260.55335969726565
+        "row_hit_rate": 0.0009763933290288036,
+        "avg_loaded_read_latency_ns": 109.73372725575
       },
       "random_64B": {
-        "achieved_GBps": 1460.125080075,
-        "efficiency": 0.4455948120346069,
+        "achieved_GBps": 1892.8618652320001,
+        "efficiency": 0.5776555985205079,
         "requests": 128000,
-        "row_hit_rate": 0.0009631629640156,
-        "avg_loaded_read_latency_ns": 237.6629236328125
+        "row_hit_rate": 0.0010088351894324513,
+        "avg_loaded_read_latency_ns": 101.75277932624999
       },
       "stream_rw_2to1": {
-        "achieved_GBps": 2146.381394516,
-        "efficiency": 0.6550236189318848,
+        "achieved_GBps": 2899.903386729,
+        "efficiency": 0.8849802815945434,
         "requests": 128000,
-        "row_hit_rate": 0.9387773150455854,
-        "avg_loaded_read_latency_ns": 267.64465174804684
+        "row_hit_rate": 0.945470832853926,
+        "avg_loaded_read_latency_ns": 125.691671269125
       }
     }
   },
@@ -110,42 +110,42 @@
       "note": "128 x 64-bit channels at 8 Gb/s = 8.2 TB/s"
     },
     "peak_GBps": 8192.0,
-    "tCK_ps": 500,
+    "tCK_ps": 250,
     "patterns": {
       "stream_read": {
-        "achieved_GBps": 5953.904,
-        "efficiency": 0.726794921875,
+        "achieved_GBps": 8107.200999936001,
+        "efficiency": 0.9896485595625001,
         "requests": 256000,
-        "row_hit_rate": 0.9473140495867769,
-        "avg_loaded_read_latency_ns": 197.08298778515623
+        "row_hit_rate": 0.9535123966942148,
+        "avg_loaded_read_latency_ns": 75.10614934960938
       },
       "kv_page_gather": {
-        "achieved_GBps": 3180.9249746020005,
-        "efficiency": 0.38829650568872076,
+        "achieved_GBps": 3913.5452109539997,
+        "efficiency": 0.47772768688403316,
         "requests": 256000,
-        "row_hit_rate": 0.004072283023670145,
-        "avg_loaded_read_latency_ns": 342.67395401953127
+        "row_hit_rate": 0.004061038641397982,
+        "avg_loaded_read_latency_ns": 136.6369479453125
       },
       "row_gather_256B": {
-        "achieved_GBps": 2930.051062508,
-        "efficiency": 0.3576722488413086,
+        "achieved_GBps": 3784.2792265559997,
+        "efficiency": 0.4619481477729492,
         "requests": 256000,
-        "row_hit_rate": 0.002415268284212354,
-        "avg_loaded_read_latency_ns": 248.40372930078124
+        "row_hit_rate": 0.0024811935014855554,
+        "avg_loaded_read_latency_ns": 107.53898727148439
       },
       "random_64B": {
-        "achieved_GBps": 2829.94747656,
-        "efficiency": 0.3454525728222656,
+        "achieved_GBps": 3736.3160664129996,
+        "efficiency": 0.4560932698258056,
         "requests": 256000,
-        "row_hit_rate": 0.0021894073636542625,
-        "avg_loaded_read_latency_ns": 229.95904732421874
+        "row_hit_rate": 0.002292548037153459,
+        "avg_loaded_read_latency_ns": 102.11256678125
       },
       "stream_rw_2to1": {
-        "achieved_GBps": 5100.917066427,
-        "efficiency": 0.6226705403353271,
+        "achieved_GBps": 7247.104726552,
+        "efficiency": 0.8846563386904297,
         "requests": 256000,
-        "row_hit_rate": 0.943852906248997,
-        "avg_loaded_read_latency_ns": 267.99409457421876
+        "row_hit_rate": 0.951067948530249,
+        "avg_loaded_read_latency_ns": 90.52042524804688
       }
     }
   },
@@ -168,39 +168,39 @@
     "tCK_ps": 572,
     "patterns": {
       "stream_read": {
-        "achieved_GBps": 382.089886717,
-        "efficiency": 0.8528792114218751,
+        "achieved_GBps": 371.88887890399997,
+        "efficiency": 0.8301091046964285,
         "requests": 120000,
-        "row_hit_rate": 0.893641947415106,
-        "avg_loaded_read_latency_ns": 101.088646802
+        "row_hit_rate": 0.8863934933770679,
+        "avg_loaded_read_latency_ns": 102.7914844385
       },
       "kv_page_gather": {
-        "achieved_GBps": 192.14920312799998,
-        "efficiency": 0.4289044712678571,
+        "achieved_GBps": 215.723871095,
+        "efficiency": 0.4815264979799107,
         "requests": 120000,
-        "row_hit_rate": 0.494253931080629,
-        "avg_loaded_read_latency_ns": 192.37807260099999
+        "row_hit_rate": 0.49419635390533534,
+        "avg_loaded_read_latency_ns": 171.240573504
       },
       "row_gather_256B": {
-        "achieved_GBps": 96.20442578000001,
-        "efficiency": 0.21474202183035715,
+        "achieved_GBps": 109.80051953200001,
+        "efficiency": 0.2450904453839286,
         "requests": 120000,
-        "row_hit_rate": 0.0007021532700280861,
-        "avg_loaded_read_latency_ns": 282.1242736455
+        "row_hit_rate": 0.0007023881196066627,
+        "avg_loaded_read_latency_ns": 263.4496205055
       },
       "random_64B": {
-        "achieved_GBps": 95.06725586,
-        "efficiency": 0.21220369611607143,
+        "achieved_GBps": 108.203229492,
+        "efficiency": 0.24152506583035716,
         "requests": 120000,
-        "row_hit_rate": 0.00043404951503313804,
-        "avg_loaded_read_latency_ns": 214.9624457695
+        "row_hit_rate": 0.00048427363130077567,
+        "avg_loaded_read_latency_ns": 207.294068696
       },
       "stream_rw_2to1": {
-        "achieved_GBps": 301.365304688,
-        "efficiency": 0.6726904122499999,
+        "achieved_GBps": 303.387835937,
+        "efficiency": 0.6772049909308036,
         "requests": 120000,
-        "row_hit_rate": 0.8324629239061296,
-        "avg_loaded_read_latency_ns": 121.38845518800001
+        "row_hit_rate": 0.8353523260973302,
+        "avg_loaded_read_latency_ns": 123.853971241
       }
     }
   },
@@ -221,39 +221,39 @@
     "tCK_ps": 1250,
     "patterns": {
       "stream_read": {
-        "achieved_GBps": 188.163265624,
-        "efficiency": 0.9187659454296874,
+        "achieved_GBps": 198.436125,
+        "efficiency": 0.9689263916015625,
         "requests": 120000,
-        "row_hit_rate": 0.904551084627745,
-        "avg_loaded_read_latency_ns": 139.3961403125
+        "row_hit_rate": 0.8779459025174076,
+        "avg_loaded_read_latency_ns": 189.65460359375
       },
       "kv_page_gather": {
-        "achieved_GBps": 132.155800779,
-        "efficiency": 0.6452919959912109,
+        "achieved_GBps": 150.249476563,
+        "efficiency": 0.7336400222802734,
         "requests": 120000,
-        "row_hit_rate": 0.4947695858314728,
-        "avg_loaded_read_latency_ns": 255.27317499999998
+        "row_hit_rate": 0.4919819646487038,
+        "avg_loaded_read_latency_ns": 247.36247249999997
       },
       "row_gather_256B": {
-        "achieved_GBps": 77.3040625,
-        "efficiency": 0.37746124267578124,
+        "achieved_GBps": 93.07901464700001,
+        "efficiency": 0.4544873762060547,
         "requests": 120000,
-        "row_hit_rate": 0.00033454886086112874,
-        "avg_loaded_read_latency_ns": 371.19254109375
+        "row_hit_rate": 0.0003010687942194792,
+        "avg_loaded_read_latency_ns": 316.04387765625
       },
       "random_64B": {
-        "achieved_GBps": 75.18015429799999,
-        "efficiency": 0.3670905971582031,
+        "achieved_GBps": 91.526439453,
+        "efficiency": 0.4469064426416015,
         "requests": 120000,
-        "row_hit_rate": 0.0002672032999607545,
-        "avg_loaded_read_latency_ns": 283.31353671875
+        "row_hit_rate": 0.0003090699500476135,
+        "avg_loaded_read_latency_ns": 269.85571625
       },
       "stream_rw_2to1": {
-        "achieved_GBps": 163.67105664,
-        "efficiency": 0.7991750812499999,
+        "achieved_GBps": 174.74349804800002,
+        "efficiency": 0.8532397365625001,
         "requests": 120000,
-        "row_hit_rate": 0.8501059721372862,
-        "avg_loaded_read_latency_ns": 205.605228125
+        "row_hit_rate": 0.8381781322253125,
+        "avg_loaded_read_latency_ns": 222.73877859374997
       }
     }
   },
