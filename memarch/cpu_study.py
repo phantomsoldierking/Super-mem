@@ -90,10 +90,9 @@ def _simulate(job):
     return dict(
         arch=job["arch"], benchmark=job["bench"], cores=cores, insts_per_core=n,
         ipc_per_core=sum(ipc) / cores, ipc_min=min(ipc),
-        # Every primary LLC miss (read, or write-allocate) issues exactly one DRAM read, so DRAM reads are the
-        # true miss count. Ramulator's own llc_read_misses/llc_read_access counters are bumped before the MSHR
-        # check and so also count MSHR merges and every retry while the MSHRs are full; they are not used.
-        llc_mpki=1000 * d["dram_reads"] / (n * cores),
+        # LLC misses are reported as DRAM accesses per kilo-instruction (dram_apki, see postprocess): every
+        # primary LLC miss issues one DRAM read. Ramulator's llc_read_misses/llc_read_access counters are bumped
+        # before the MSHR check and so also count MSHR merges and retries; they are not used.
         dram_GBps=(d["dram_reads"] + d["dram_writes"]) * 64 / seconds / 1e9,
         dram_avg_read_latency_ns=lat_sum / d["dram_reads"] if d["dram_reads"] else 0.0,
         row_hit_rate=d["row_hits"] / rows if rows else 0.0,
@@ -157,7 +156,7 @@ def postprocess(results):
     for r in results:
         seconds = r["insts_per_core"] / (r["ipc_min"] * CORE["clock_ghz"] * 1e9)
         r["dram_apki"] = 1000 * r["dram_GBps"] * 1e9 * seconds / 64 / (r["insts_per_core"] * r["cores"])
-        for k in ("llc_miss_rate", "l2_mpki"):  # retry-inflated Ramulator counters (see _simulate)
+        for k in ("llc_miss_rate", "l2_mpki", "llc_mpki"):  # superseded by dram_apki (see _simulate)
             r.pop(k, None)
     base = {(r["benchmark"], r["cores"]): r["ipc_per_core"] for r in results if r["arch"] == "cpu_ddr5"}
     for r in results:
@@ -170,6 +169,6 @@ def _write_csv(path, rows):
     import csv
 
     with open(path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w = csv.DictWriter(f, fieldnames=list(dict.fromkeys(k for r in rows for k in r)))
         w.writeheader()
         w.writerows(rows)

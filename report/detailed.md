@@ -326,15 +326,16 @@ batch 1 and ~5x more than an HBM3 GPU; at batch 32 the HBM GPUs are the most ene
 **What the traces look like.** Within the traced 200M-instruction windows, seven of the eight benchmarks
 touch 3–274 MiB and make 0.2–2 DRAM accesses per thousand instructions on the CPU baseline; only 782.lbm
 (a 542 MiB lattice sweep, 43 accesses/kinst on 1 core, 101 on 4) is bandwidth-heavy. For those seven, the
-DRAM traffic is *identical* on all seven memory systems: their working sets fit in every LLC from 50 MiB up.
+DRAM traffic is *identical* on all seven memory systems (one exception: 4-core nest on the GPU + HBM3's 50 MiB
+LLC, 3.2 instead of 2.7 accesses/kinst): their hot working sets fit in every LLC.
 What differs between the architectures is therefore the latency of the LLC itself, and the IPC tracks it
 almost exactly:
 
 | LLC (on-chip SRAM) | CPU 96 MiB | LPU 232 MiB | NPU 144 MiB | Mesh 208 MiB | GPU 50/128 MiB | Wafer 1 GiB* |
 |---|---:|---:|---:|---:|---:|---:|
 | Hit latency (4 GHz cycles) | 56 | 120 | 160 | 240 | 480 | 800 |
-| Geomean IPC vs CPU, 1 core | 1.00 | 0.83 | 0.73 | 0.63 | 0.41 | 0.32 |
-| Geomean IPC vs CPU, 4 cores | 1.00 | 0.83 | 0.70 | 0.71 | 0.45 | 0.39 |
+| Geomean IPC vs CPU, 1 core | 1.00 | 0.83 | 0.73 | 0.63 | 0.44 | 0.32 |
+| Geomean IPC vs CPU, 4 cores | 1.00 | 0.83 | 0.70 | 0.71 | 0.53/0.52 | 0.39 |
 
 \* The wafer's 44 GiB SRAM is capped at a 1 GiB LLC in SimpleO3; nothing in these traces needs more.
 
@@ -342,14 +343,15 @@ almost exactly:
 
 1. **Latency, not bandwidth, decides general-purpose code.** SPEC-style code issues dependent, irregular
    accesses with little memory-level parallelism. A large SRAM that is 120–200 ns away (GPU L2 across the
-   die, wafer fabric) costs 2–7x IPC on pointer-chasing codes (omnetpp 0.27x/0.18x, nest 0.22x/0.15x on
+   die, wafer fabric) costs 2–7x IPC on pointer-chasing codes (omnetpp 0.28x/0.18x, nest 0.23x/0.15x on
    1 core) even though it never misses. Compute-dense codes with tiny footprints (marian 3 MiB, stockfish's
    hot set) lose least (0.5–1.0x).
 2. **HBM bandwidth buys nothing here.** GPU + HBM4 has 2.5x the DRAM bandwidth of GPU + HBM3 and a 2.5x larger
-   LLC, yet its IPC is the same to within 3% on every benchmark: neither DRAM nor LLC capacity is the
-   bottleneck. Even on lbm the HBM GPUs use only ~45 GB/s of their 3–8 TB/s, because a single 4-wide core
-   with 32 MSHRs cannot generate enough parallel misses; the DRAM read latency at the controller is also
-   higher for HBM (80–106 ns) than for DDR5 (40–60 ns).
+   LLC, yet its IPC is the same to within 1% on every benchmark except 4-core lbm, where it is 10% *slower*
+   (HBM4's lower random-access efficiency raises its loaded latency): neither DRAM bandwidth nor LLC capacity is
+   the bottleneck. Even on 4-core lbm the HBM GPUs use only 61–67 GB/s of their 3–8 TB/s, because 4-wide cores
+   with 32 MSHRs each cannot generate enough parallel misses. Loaded DRAM read latency is similar on HBM
+   (40–50 ns) and DDR5 (28–73 ns), so the GPUs' 2x IPC deficit comes from the 120 ns L2 hit latency, not DRAM.
 3. **Capacity helps only the bandwidth-heavy benchmark.** On 4-core lbm the 208–232 MiB LLCs of the mesh and
    LPU cut DRAM accesses from 101 to 32–36 per kinst and recover 0.81–0.87x of CPU IPC, while the NPU,
    whose 144 MiB does not hold the working set, sends the full stream to LPDDR5; four interleaved lbm

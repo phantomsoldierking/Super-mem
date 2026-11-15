@@ -67,7 +67,7 @@ state in SRAM, chip count set by capacity.
    see a fraction of datasheet bandwidth on the fastest interfaces.
 5. **General-purpose code wants the opposite.** On the SPEC traces, DRAM traffic is the same on every system
    for 7 of 8 benchmarks; IPC tracks LLC hit latency (geomean vs CPU + DDR5, 1 core: LPU 0.83, NPU 0.73,
-   mesh 0.63, GPU 0.41, wafer 0.32), down to 0.15–0.27x on pointer-chasing omnetpp and nest. Only
+   mesh 0.63, GPU 0.44, wafer 0.32), down to 0.15–0.28x on pointer-chasing omnetpp and nest. Only
    bandwidth-heavy lbm benefits from 200+ MiB of SRAM (4 cores: 0.81–0.87x, vs 0.45x for the NPU,
    whose LPDDR5 reaches 126 ns loaded latency). Ramulator's LLC miss counters include MSHR retries, so DRAM accesses are used instead.
 
