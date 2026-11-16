@@ -15,7 +15,7 @@ FAKE_CALIB = {"patterns": {p: {"achieved_GBps": 1000.0} for p in
 
 
 def wl(**kw):
-    sc = dict(id="t", model="llama3_1_8b", phase="decode", batch=1, context=2048)
+    sc = {"id": "t", "model": "llama3_1_8b", "phase": "decode", "batch": 1, "context": 2048}
     sc.update(kw)
     return build(sc)
 
@@ -28,7 +28,7 @@ def test_parameter_counts_match_published_models():
     assert llama70.resident["weight"] / 2 == pytest.approx(70.55e9, rel=0.01)
     mixtral = wl(model="mixtral_8x7b")
     assert mixtral.resident["weight"] / 2 == pytest.approx(46.7e9, rel=0.01)
-    resnet = build(dict(id="r", model="resnet50", phase="forward", batch=1))
+    resnet = build({"id": "r", "model": "resnet50", "phase": "forward", "batch": 1})
     assert resnet.resident["weight"] / 2 == pytest.approx(25.5e6, rel=0.01)
     assert resnet.total("flops") == pytest.approx(8.2e9, rel=0.03)
 
@@ -77,7 +77,7 @@ def test_resident_sram_has_no_dram_traffic_and_cache_streams_from_dram():
 
 def test_scratchpad_holds_small_models_entirely():
     archs = {a.name: a for a in load_all()}
-    resnet = build(dict(id="r", model="resnet50", phase="forward", batch=1))
+    resnet = build({"id": "r", "model": "resnet50", "phase": "forward", "batch": 1})
     r = evaluate(archs["npu_lpddr5"], resnet, FAKE_CALIB)
     assert r.sram_fraction_persistent == 1.0 and r.dram_bytes == 0
 
@@ -155,3 +155,35 @@ def test_controller_tick_period_includes_hbm_tick_multiplier():
     assert dram_clock_ps(archs["gpu_hbm4"].dram) == 250  # 500 ps CK / 2
     assert dram_clock_ps(archs["cpu_ddr5"].dram) == 416  # DDR5 ticks once per CK
     assert _ratio(4.0, 312) == (5, 4)  # 4 GHz core : 3.2 GHz HBM3 controller
+
+
+def test_psd_slope_classifies_white_and_pink_noise():
+    import numpy as np
+
+    from memarch.access_patterns import summarise_psd, welch_psd
+
+    rng = np.random.default_rng(0)
+    white = rng.standard_normal(1 << 16)
+    w = summarise_psd(*welch_psd(white))
+    assert abs(w["beta"]) < 0.15 and w["psd_class"] == "stationary"
+    spec = np.fft.rfft(rng.standard_normal(1 << 16))
+    f = np.fft.rfftfreq(1 << 16)
+    spec[1:] /= np.sqrt(f[1:])  # S(f) ~ 1/f
+    spec[0] = 0
+    pink = np.fft.irfft(spec)
+    p = summarise_psd(*welch_psd(pink))
+    assert 0.8 < p["beta"] < 1.2 and p["psd_class"] == "monofractal"
+
+
+def test_trace_locality_classes(tmp_path):
+    import json
+
+    from memarch.access_patterns import LOCALITY, analyse_trace
+
+    t = tmp_path / "x.trace"
+    # next line, same page, within 1 MiB, far, then next line again
+    t.write_text("\n".join(f"9 {a}" for a in [0, 64, 1024, 1 << 19, 1 << 30, (1 << 30) + 64]) + "\n")
+    (tmp_path / "x.trace.json").write_text(json.dumps({"touched_pages_in_window": 4}))
+    r = analyse_trace(t)
+    assert [round(r["locality"][k], 2) for k in LOCALITY] == [0.4, 0.2, 0.2, 0.2]
+    assert r["mpki"] == 100 and r["rereference"] == 0

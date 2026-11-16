@@ -33,7 +33,7 @@ def ramulator():
             raise RuntimeError(f"{lib} not found; build Ramulator (see ramulator2/README.md)")
         ctypes.CDLL(str(lib), mode=ctypes.RTLD_GLOBAL)
         sys.path.insert(0, str(RAMULATOR_DIR / "python"))
-        import ramulator as r  # noqa: E402
+        import ramulator as r
 
         _loaded = r
     return _loaded
@@ -77,8 +77,11 @@ def _overrides(dram_cfg):
     return o
 
 
-def build_memory_system(dram_cfg, clock_ratio=1, queue_depth=None):
-    """Return a GenericDRAM memory system with one controller per channel."""
+def build_memory_system(dram_cfg, clock_ratio=1, queue_depth=None, cmd_trace=None):
+    """Return a GenericDRAM memory system with one controller per channel.
+
+    ``cmd_trace``: path prefix; if set, every DRAM command is recorded (binary, one file per channel,
+    ``<prefix>.ch<N>``) by Ramulator's CmdTraceRecorder controller plugin."""
     r = ramulator()
     std = dram_cfg["standard"]
     channels = dram_cfg["channels"]
@@ -96,7 +99,9 @@ def build_memory_system(dram_cfg, clock_ratio=1, queue_depth=None):
     ctrl = getattr(r.controller, _CONTROLLERS[std])(
         dram=dram, scheduler=r.scheduler.FRFCFS(), refresh_manager=refresh,
         row_policy=r.row_policy.Open(), addr_mapper=r.addr_mapper.MOP4CLXOR(),
-        read_buffer_size=q, write_buffer_size=q)
+        read_buffer_size=q, write_buffer_size=q,
+        **({"controller_plugins": [r.controller_plugin.CmdTraceRecorder(path=str(cmd_trace), binary=True)]}
+           if cmd_trace else {}))
     return r.memory_system.GenericDRAM(clock_ratio=clock_ratio, controllers=[ctrl] * channels,
                                        channel_mapper=r.channel_mapper.CacheLineInterleave())
 
@@ -190,10 +195,10 @@ def calibrate(dram_cfg, patterns=None, requests=None, cache=True, refresh=False)
             misses = sum(c.get("row_misses", 0) for c in ctrls)
             conflicts = sum(c.get("row_conflicts", 0) for c in ctrls)
             lat = [c["avg_read_latency"] for c in ctrls if c.get("num_read_reqs")]
-            results[p] = dict(achieved_GBps=bw, efficiency=bw / peak, requests=reads + writes,
-                              row_hit_rate=hits / max(1, hits + misses + conflicts),
-                              avg_loaded_read_latency_ns=(sum(lat) / len(lat)) * tck / 1000 if lat else None)
-    data = dict(dram=dram_cfg, peak_GBps=peak, tCK_ps=tck, patterns=results)
+            results[p] = {"achieved_GBps": bw, "efficiency": bw / peak, "requests": reads + writes,
+                              "row_hit_rate": hits / max(1, hits + misses + conflicts),
+                              "avg_loaded_read_latency_ns": (sum(lat) / len(lat)) * tck / 1000 if lat else None}
+    data = {"dram": dram_cfg, "peak_GBps": peak, "tCK_ps": tck, "patterns": results}
     if cache:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache_file.write_text(json.dumps(data, indent=2))
@@ -223,7 +228,7 @@ def llc_geometry(target_bytes, cores, min_ways=16, line=64):
     return sets * ways * line, ways, sets
 
 
-def run_cpu_trace(arch, traces, insts, core_cfg):
+def run_cpu_trace(arch, traces, insts, core_cfg, cmd_trace=None):
     """Replay one SimpleO3 trace per core. Returns Ramulator stats dict + derived values."""
     r = ramulator()
     dram_cfg = arch.cpu_dram()
@@ -233,7 +238,7 @@ def run_cpu_trace(arch, traces, insts, core_cfg):
     llc_bytes, llc_ways, llc_sets = llc_geometry(arch.cpu_llc_bytes(len(traces)), len(traces),
                                                  core_cfg["llc_ways"])
     per_core = llc_bytes // len(traces)
-    mem = build_memory_system(dram_cfg, clock_ratio=mem_ratio)
+    mem = build_memory_system(dram_cfg, clock_ratio=mem_ratio, cmd_trace=cmd_trace)
     fe = r.frontend.SimpleO3(
         clock_ratio=fe_ratio, num_expected_insts=int(insts), traces=[str(t) for t in traces],
         ipc=core_cfg["ipc"], inst_window_depth=core_cfg["window"],
@@ -249,15 +254,15 @@ def run_cpu_trace(arch, traces, insts, core_cfg):
     cycles = [f[f"cycles_recorded_core_{i}"] for i in range(len(traces))]
     lat = [(c["avg_read_latency"], c["num_read_reqs"]) for c in ctrls if c.get("num_read_reqs")]
     nreq = sum(n for _, n in lat)
-    return dict(
-        core_cycles=cycles,
-        llc_read_access=f["llc_read_access"], llc_read_misses=f["llc_read_misses"],
-        llc_write_access=f["llc_write_access"], llc_write_misses=f["llc_write_misses"],
-        dram_reads=sum(c["num_read_reqs"] for c in ctrls),
-        dram_writes=sum(c["num_write_reqs"] for c in ctrls),
-        dram_avg_read_latency_ns=(sum(l * n for l, n in lat) / nreq * tck / 1000) if nreq else 0.0,
-        row_hits=sum(c.get("row_hits", 0) for c in ctrls),
-        row_misses=sum(c.get("row_misses", 0) for c in ctrls),
-        row_conflicts=sum(c.get("row_conflicts", 0) for c in ctrls),
-        llc_latency_cycles=llc_cycles, llc_bytes=llc_bytes, llc_ways=llc_ways, llc_sets=llc_sets, clock_ratio=[fe_ratio, mem_ratio],
-        dram=dram_cfg)
+    return {
+        "core_cycles": cycles,
+        "llc_read_access": f["llc_read_access"], "llc_read_misses": f["llc_read_misses"],
+        "llc_write_access": f["llc_write_access"], "llc_write_misses": f["llc_write_misses"],
+        "dram_reads": sum(c["num_read_reqs"] for c in ctrls),
+        "dram_writes": sum(c["num_write_reqs"] for c in ctrls),
+        "dram_avg_read_latency_ns": (sum(l * n for l, n in lat) / nreq * tck / 1000) if nreq else 0.0,
+        "row_hits": sum(c.get("row_hits", 0) for c in ctrls),
+        "row_misses": sum(c.get("row_misses", 0) for c in ctrls),
+        "row_conflicts": sum(c.get("row_conflicts", 0) for c in ctrls),
+        "llc_latency_cycles": llc_cycles, "llc_bytes": llc_bytes, "llc_ways": llc_ways, "llc_sets": llc_sets, "clock_ratio": [fe_ratio, mem_ratio],
+        "dram": dram_cfg}

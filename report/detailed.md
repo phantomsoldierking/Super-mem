@@ -203,11 +203,36 @@ architectures; the LLC takes the architecture's on-chip SRAM capacity and latenc
 architecture's Ramulator DRAM (SRAM-only chips get a small DDR5 host memory for spills). Because Ramulator
 replays a trace cyclically, every point is simulated for N and 2N instructions and the difference is
 reported, so the LLC is warm. Single-core runs use N = 100M; 4-core "rate" runs give each core its own copy
-of the trace in a disjoint address range and use N = 10M per core.
+of the trace in a disjoint address range and use N = 10M per core. The full replay configuration:
+
+{{replay_config}}
 
 This is a deliberate thought experiment: AI chips do not run SPEC. It asks what their memory hierarchy —
 very large, slower SRAM and high-bandwidth but bank-poor DRAM — does to latency-sensitive general-purpose
 memory streams, holding the core constant.
+
+### 3.6 Memory access-pattern characterization
+
+LLC-miss counts summarise *how much* traffic reaches memory, not *how* it arrives. Following the methodology
+of Agarwal et al. (ISCAS 2025, "Towards Improving Memory Access in Large-Scale NoC-based Systems"),
+`memarch/access_patterns.py` (`make patterns`) characterises the traces at two levels:
+
+* **Trace level** (independent of the architecture): the address of every L2 miss over the traced window; the
+  distance of each miss to the previous one (next 64 B line, same 4 KiB page, within 1 MiB, or far); the
+  *stream share*, i.e. misses that are the next line after any of the previous 16 misses (what a 16-stream
+  prefetcher would catch, even when streams interleave); the re-reference share (misses to a line already
+  missed in the window); and the interval between misses in instructions.
+* **Memory-controller level** (per architecture): a warm single-core replay (2 x 30M instructions, second half
+  analysed) of each trace on each of the five DRAM-backed systems, with Ramulator's `CmdTraceRecorder` plugin
+  on every channel controller. The RD/WR column commands of all channels are merged into one time series, and
+  the time between consecutive commands is the *inter-request time* at the memory controllers. The plugin sees
+  commands when they are issued, so this is the service-side counterpart of the paper's inter-packet arrival
+  time. Its power spectral density S(f) is estimated with Welch's method (Hann window, 50% overlap; frequency in
+  cycles per request) and summarised by the log-log slope β of S(f) ∝ 1/f<sup>β</sup>, fitted on 32 log-spaced bins.
+  As in the paper, a flat spectrum (β < 0.3 over the whole range) is called **stationary** (predictable
+  request flow), a single straight 1/f<sup>β</sup> line **monofractal**, and a spectrum whose low- and high-frequency
+  halves have slopes differing by ≥ 0.5 **multifractal** (several scaling regimes, least predictable). Negative
+  β means power rising with frequency: requests alternate between short and long gaps (anti-persistent).
 
 ## 4. Validation performed
 
@@ -229,8 +254,16 @@ memory streams, holding the core constant.
   regenerated with the pinned build (HBM3/HBM4 stream efficiency 74/73% became 99%, random-access efficiency
   rose by 3–13 points, DDR5 is unchanged). The bandwidth counter was cross-checked against requests served
   per controller tick. Ramulator is now built from source with `make ramulator`.
+* **Access-pattern measurements**:
+    * Each controller-level replay checks that the recorded column commands equal the read and write requests
+      Ramulator served. All 40 replays record 100%.
+    * A first attempt that wrote the command traces to a RAM-backed tmpfs lost commands silently when the disk
+      filled (one HBM job kept only a sixth of its requests). It was discarded and re-run on disk with the
+      check in place.
+    * The PSD estimator returns β ≈ 0 and "stationary" for white noise and β ≈ 1 and "monofractal" for synthetic
+      1/f noise. The locality classes are unit-tested on a hand-built trace.
 * **Accounting**: step time equals compute-bound + memory-bound + communication + overhead time for every
-  architecture (test). `make test` runs 12 tests.
+  architecture (test). `make test` runs 15 tests.
 
 ## 5. Results — AI inference
 
@@ -375,6 +408,89 @@ almost exactly:
 
 {{spec_table:4}}
 
+### 6.3 Memory access-pattern characterization
+
+Miss counts say how much traffic reaches memory; the figures and tables below show *how* it arrives, first in
+the L2-miss traces themselves (the same for every architecture) and then at the memory controllers of the
+five DRAM-backed systems (method in Section 3.6).
+
+{{fig:12_access_spatial|Figure 12. Address of every L2 miss over the 200M-instruction trace window (6,000 evenly spaced samples; addresses are first-touch physical). Stream = next line after one of the previous 16 misses; re-referenced = miss to a line already missed in the window.}}
+
+{{pattern_table}}
+
+**Trace-level patterns.** The eight traces fall into four families:
+
+* **Streams.** marian reads its weights as one sequential stream: 99% of misses continue a stream and none is
+  re-referenced, but there is only one miss every ~6,700 instructions (CV 0.6, the most regular interval).
+  sealcrypto is also 100% streams, as short bursts over 15 MiB separated by long compute phases, giving the
+  burstiest interval of all (CV 30).
+* **Interleaved streams.** lbm sweeps its 542 MiB lattice with three streams about 12 MiB apart. Consecutive
+  misses alternate between the streams, so *no* miss is to the next line, yet 70% fall in the same 4 KiB page as
+  the previous one. With 58 misses per thousand instructions and a median gap of one instruction, it is the
+  only bandwidth-bound trace.
+* **Scattered reuse.** omnetpp touches 17 MiB uniformly at random (89% of misses re-referenced). nest alternates
+  dense phases over a 25 MiB region with streaming phases (73% re-referenced). These are the pointer-chasing
+  codes that lose most IPC on slow LLCs in Section 6.
+* **Sweep plus scatter.** stockfish allocates along a 170 MiB sweep while hitting a hash table at random (only
+  6% re-referenced). sqlite repeatedly sweeps its 20 MiB database (67% re-referenced). zstd slides a match window
+  through its input (49% stream, 47% re-referenced).
+
+The re-referenced misses are LLC hits on every architecture, because every hot set fits in every LLC from
+50 MiB up. That is why the DRAM traffic in Section 6 is nearly identical across architectures.
+
+{{fig:13_mc_interarrival|Figure 13. Time between consecutive DRAM column commands at the memory controllers for the first 1,000 requests of the warm window (cf. Fig. 1 of Agarwal et al.), CPU + DDR5 vs GPU + HBM3. Symmetric-log axis; 0 = issued in the same controller cycle on another channel.}}
+
+**At the memory controllers.** Each benchmark keeps a recognisable timing signature on every system. marian
+issues requests at a few discrete spacings (about 160, 600 and 800 ns). nest is a tight band at about 60 ns on DDR5
+and 170 ns on HBM3. lbm's requests arrive in bursts that spread over several channels in the same controller
+cycle. On the GPU every band shifts upwards, because each miss first pays the 120 ns L2 hit latency.
+
+{{fig:14_mc_psd|Figure 14. Log-log power spectral density of the inter-request time series at the memory controllers, per benchmark and DRAM-backed architecture (cf. Figs. 3–5 of Agarwal et al.). GPU + HBM3 and GPU + HBM4 overlap on most panels.}}
+
+Average memory-controller throughput (cf. Table II of Agarwal et al.) and PSD slope β with its class
+(S = stationary, M = monofractal, MF = multifractal, AP = anti-persistent) for the same warm windows:
+
+{{mc_table:throughput}}
+
+{{mc_table:psd}}
+
+**Findings.**
+
+1. **The program, not the memory system, sets the shape of the request stream.** For five of the eight
+   benchmarks β varies by at most 0.05 across the five memory systems. 33 of the 40 benchmark-system pairs have
+   their benchmark's majority class, and the exceptions lie close to a class boundary (stockfish and zstd). This
+   differs from the NoC study, where buffer and LLC sizes changed the PSD class. Here every hot set fits in every
+   LLC, so the memory system only rescales the timing.
+2. **Three predictability levels.**
+    * *Stationary, flat spectrum:* sealcrypto and omnetpp everywhere, and lbm on the AI memory systems. Their
+      request flows have no long-range correlation: regular bursts, memoryless random reuse and steady streaming.
+    * *Monofractal (β ≈ 0.3–0.55):* stockfish, sqlite and zstd, with phase behaviour at one scale.
+    * *Multifractal:* marian and nest. marian's spectrum falls as 1/f<sup>2</sup> at low frequency, from layer-by-layer
+      weight phases, and has sharp peaks at multiples of 0.1 cycles/request, a period of about 10 requests. nest
+      switches between dense and streaming phases.
+    * *Anti-persistent:* lbm on CPU + DDR5 (β = −0.43). DDR5 serves it fast enough that back-to-back bursts and
+      gaps alternate, putting most spectral power at high frequency.
+
+3. **Throughput follows the core, not the DRAM.** Controller throughput is highest on CPU + DDR5 for every
+   benchmark (0.13–16 GB/s) and lowest on the GPUs, 1.2–3.8x lower. Every system serves the same requests per
+   instruction, so throughput scales with IPC, which the LLC latency sets. Even lbm draws only 6–8 GB/s from
+   HBM systems with terabytes per second of peak bandwidth (single core). The one larger gap between the two GPUs is lbm, at 8.4 vs 6.0 GB/s. Over 20M
+   instructions both GPUs issue exactly 784,178 reads, but the 50 MiB LLC of GPU + HBM3 evicts 85,138 dirty
+   lattice lines, while the 128 MiB LLC of GPU + HBM4 holds them all. The difference is LLC capacity, not DRAM.
+
+4. **Row-buffer locality needs both a spatial pattern and few channels** (Figure 15).
+    * Only sealcrypto (80% next line) and lbm (70% same page) produce many row hits.
+    * Their hit rates rise as the channel count falls: GPU HBM4 (128 channels) 2–17%, HBM3 (64) 7–30%, DDR5 (16)
+      22–55%, LPDDR5 (8) 27–73%, the 2-channel host DDR5 of the SRAM-only designs up to 71–82%.
+    * Cache-line interleaving spreads a stream over every channel, so on a wide memory system each row sees only a
+      few lines before refresh or another stream closes it.
+    * marian's perfect stream gets almost no row hits anywhere. It misses only once every ~6,700 instructions, so
+      each channel sees its next line microseconds later, after a refresh has closed the row.
+    * Wide AI memory systems therefore turn even sequential CPU-style streams into row misses, the same effect
+      behind the low random-access efficiency of HBM and GDDR6 in Section 3.1.
+
+{{fig:15_locality|Figure 15. Left: distance of each L2 miss to the previous one (trace level). Right: DRAM row-buffer hit rate in the warm 1-core replays of Section 6 (100M instructions); the SRAM-only designs reach only a 2-channel DDR5 host memory.}}
+
 ## 7. Conclusions
 
 1. **Decode is a memory-bandwidth problem, prefill a compute problem.** On every DRAM-based design 83–100% of
@@ -393,7 +509,9 @@ almost exactly:
 5. **The same memory systems are poor for general-purpose code.** On SPEC CPU 2026 traces built with the
    LLVM tracer, IPC follows LLC hit latency: geomean 0.83x (LPU) to 0.32x (wafer) of a CPU + DDR5 hierarchy,
    with HBM4 no better than HBM3. AI inference memory systems are specialised for wide, predictable streams;
-   their latency costs are hidden by the workload, not removed.
+   their latency costs are hidden by the workload, not removed. The shape of each request stream (its PSD class)
+   is set by the program; the memory system only rescales its timing, and wide memory systems turn even
+   sequential streams into row misses.
 
 **Overall:** HBM-based GPUs remain the most balanced choice — good latency, the best throughput per watt on
 every LLM decode scenario, the best throughput per chip among single-die designs, and graceful scaling
@@ -428,6 +546,7 @@ DRAM bandwidth otherwise.
 | `memarch/workloads.py` | Operator graphs (LLM dense/MoE, ResNet-50, DLRM) |
 | `memarch/perf.py` | Placement, roofline timing, collectives, energy |
 | `memarch/ai_study.py`, `memarch/cpu_study.py` | The AI and SPEC studies |
+| `memarch/access_patterns.py` | Access-pattern characterization: trace locality, controller-level inter-request PSD |
 | `memarch/figures.py` | All figures |
 | `tracer/` | LLVM pass plugin, runtime, sanity kernel |
 | `spec/` | SPEC config, build script, trace driver, benchmark list |
@@ -446,5 +565,6 @@ make spec-install              # extract the ISO and install SPEC CPU 2026 to ~/
 make spec-build                # instrumented clang build + run-directory setup (~20 min)
 make spec-trace                # 8 traces, 200M instructions each (~3 min)
 make spec                      # replay on 7 architectures x {1, 4} cores (~3 h on 12 threads)
+make patterns                  # access-pattern study, 8 traces x 5 DRAM systems (~1 h)
 make figures report test
 ```

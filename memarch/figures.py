@@ -7,11 +7,11 @@ import math
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm  # noqa: E402
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 
-from .architectures import load_all  # noqa: E402
-from .paths import RESULTS_DIR  # noqa: E402
+from .architectures import load_all
+from .paths import RESULTS_DIR
 
 FIG_DIR = RESULTS_DIR / "figures"
 # Validated categorical order (dataviz reference palette, light mode), one slot per architecture.
@@ -276,6 +276,107 @@ def fig_spec():
     _save(fig, "11_spec_memory")
 
 
+# ---------------------------------------------------------------------------
+# Access-pattern characterization (memarch/access_patterns.py)
+LOCALITY_COLORS = ["#123f75", "#2a78d6", "#9cc0ec", "#d9d8d3"]  # near -> far
+
+
+def _short(bench):
+    return bench.split(".", 1)[1].removesuffix("_r")
+
+
+def fig_patterns():
+    path = RESULTS_DIR / "spec/access_patterns.json"
+    if not path.exists():
+        return
+    data = json.loads(path.read_text())
+    archs, color = _archs()
+    labels = {a.name: a.label for a in archs}
+    traces = data["traces"]
+    mc = {(r["benchmark"], r["arch"]): r for r in data["mc"]}
+
+    # 12: spatial pattern of the L2-miss stream
+    fig, axes = plt.subplots(2, 4, figsize=(11, 5.0))
+    for ax, t in zip(axes.flat, traces):
+        ax.scatter(t["scatter_pos"], t["scatter_addr"], s=1.2, color=SERIES[0], alpha=0.5, linewidths=0)
+        ax.set_title(_short(t["benchmark"]), loc="left", pad=15)
+        ax.text(0, 1.02, f"stream {t['stream_share']:.0%} · re-referenced {t['rereference']:.0%}",
+                transform=ax.transAxes, fontsize=7.5, color=INK2, va="bottom")
+    for ax in axes[1]:
+        ax.set_xlabel("Instructions in trace window (M)")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Address (MiB, first-touch)")
+    fig.tight_layout()
+    _save(fig, "12_access_spatial")
+
+    # 13: inter-request interval at the memory controllers vs request index (paper Fig. 1)
+    show = [a for a in ("cpu_ddr5", "gpu_hbm3") if a in data["archs"]]
+    fig, axes = plt.subplots(2, 4, figsize=(11, 5.0), sharex=True)
+    for ax, t in zip(axes.flat, traces):
+        b = t["benchmark"]
+        for a, m in zip(show, ("x", "+")):
+            r = mc.get((b, a))
+            if r:
+                y = r["intervals_ns"]
+                ax.scatter(range(len(y)), y, s=9, marker=m, color=color[a], linewidths=0.7, alpha=0.75,
+                           label=labels[a])
+        ax.set_yscale("symlog", linthresh=1)
+        ax.set_title(_short(b), loc="left")
+    for ax in axes[1]:
+        ax.set_xlabel("Data request index")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Time since last request (ns)")
+    axes[0, -1].legend(fontsize=7, loc="upper right", markerscale=1.5)
+    fig.tight_layout()
+    _save(fig, "13_mc_interarrival")
+
+    # 14: log-log PSD of the inter-request time series (paper Figs. 3-5)
+    fig, axes = plt.subplots(2, 4, figsize=(11, 5.2))
+    for ax, t in zip(axes.flat, traces):
+        b = t["benchmark"]
+        for a in data["archs"]:
+            r = mc.get((b, a))
+            if r:
+                ax.loglog(r["f"], r["psd"], color=color[a], linewidth=1.4, marker=".", markersize=3,
+                          label=f"{labels[a]}")
+        ax.set_title(_short(b), loc="left")
+    for ax in axes[1]:
+        ax.set_xlabel("Frequency (cycles / request)")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("PSD of inter-request time")
+    handles, lab = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, lab, loc="lower center", ncol=len(lab), fontsize=8, bbox_to_anchor=(0.5, -0.04))
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    _save(fig, "14_mc_psd")
+
+    # 15: locality of consecutive misses (trace) and DRAM row-buffer hit rate (Ramulator, 1 core)
+    spec = RESULTS_DIR / "spec/spec_results.json"
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 3.8), gridspec_kw={"width_ratios": [1, 1.25]})
+    names = [_short(t["benchmark"]) for t in traces]
+    left = [0.0] * len(traces)
+    for k, (cat, c) in enumerate(zip(["next line", "same 4 KiB page", "within 1 MiB", "far"], LOCALITY_COLORS)):
+        vals = [100 * t["locality"][cat] for t in traces]
+        ax1.barh(names, vals, left=left, color=c, label=cat, edgecolor=SURFACE, linewidth=1.5, height=0.7)
+        left = [x + v for x, v in zip(left, vals)]
+    ax1.invert_yaxis()
+    ax1.set_xlim(0, 100)
+    ax1.set_xlabel("Share of consecutive L2-miss pairs (%)")
+    ax1.set_title("Distance to the previous miss")
+    ax1.legend(fontsize=7, ncol=4, loc="lower center", bbox_to_anchor=(0.5, 1.07))
+    ax1.grid(axis="y", visible=False)
+    if spec.exists():
+        res = json.loads(spec.read_text())["results"]
+        get = {(r["benchmark"], r["arch"]): r for r in res if r["cores"] == 1}
+        cols = [a.name for a in archs]
+        mat = [[100 * get[(t["benchmark"], a)]["row_hit_rate"] if (t["benchmark"], a) in get else float("nan")
+                for a in cols] for t in traces]
+        im = _heatmap(ax2, mat, names, [labels[a] for a in cols], "{:.0f}", plt.Normalize(0, 100), SEQUENTIAL)
+        fig.colorbar(im, ax=ax2, shrink=0.85, label="DRAM row-buffer hit rate (%)")
+        ax2.set_title("Row-buffer hits at the DRAM (1 core)")
+    fig.tight_layout()
+    _save(fig, "15_locality")
+
+
 def make_all():
     fig_landscape()
     fig_calibration()
@@ -284,4 +385,5 @@ def make_all():
     fig_energy()
     fig_sweeps()
     fig_spec()
+    fig_patterns()
     print(f"figures -> {FIG_DIR}")

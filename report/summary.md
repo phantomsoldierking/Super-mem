@@ -15,7 +15,9 @@ far less throughput per chip and per watt, and are bound by inter-chip communica
 balanced design. Fast DRAM interfaces lose 42–76% of their bandwidth on random access, which matters for
 KV-cache and embedding traffic. On SPEC CPU 2026 the ranking reverses: the
 working sets fit in every last-level cache, IPC follows SRAM hit latency, and the AI memory systems reach
-only 0.32–0.83x of a CPU + DDR5 hierarchy (geomean), with HBM4 no faster than HBM3.
+only 0.32–0.83x of a CPU + DDR5 hierarchy (geomean), with HBM4 no faster than HBM3. A power-spectral analysis
+of the request streams at the memory controllers shows that their shape (stationary, monofractal or multifractal)
+is set by the program; the memory system only rescales their timing.
 
 ## 1. Architectures
 
@@ -37,6 +39,10 @@ state in SRAM, chip count set by capacity.
   load, store and basic block. The linked runtime skips 30B instructions, warms private L1/L2 caches, and
   records the L2-miss stream of 200M instructions. Ramulator's SimpleO3 core (4-wide, 4 GHz) replays the
   traces with each architecture's SRAM as LLC and its DRAM behind it, warm-cache, on 1 and 4 cores.
+* **Access patterns.** Following Agarwal et al. (ISCAS 2025), each trace is characterised by its spatial
+  locality and re-reference rate. Each trace is then replayed on the five DRAM-backed systems with Ramulator's
+  command recorder on every controller. The power spectral density of the inter-request times is summarised by
+  its log-log slope β: flat = stationary, one 1/f<sup>β</sup> line = monofractal, several slopes = multifractal.
 
 ## 3. Results
 
@@ -49,6 +55,8 @@ state in SRAM, chip count set by capacity.
 {{fig:07_energy|Figure 3. Energy per token: dynamic memory + link energy (top), chips x TDP x time (bottom).}}
 
 {{fig:10_spec_ipc|Figure 4. SPEC CPU 2026 IPC relative to CPU + DDR5 when only the memory system changes.}}
+
+{{fig:14_mc_psd|Figure 5. Power spectral density of the inter-request time at the memory controllers, per SPEC benchmark and DRAM-backed system (log-log).}}
 
 ## 4. Findings
 
@@ -70,6 +78,15 @@ state in SRAM, chip count set by capacity.
    mesh 0.63, GPU 0.44, wafer 0.32), down to 0.15–0.28x on pointer-chasing omnetpp and nest. Only
    bandwidth-heavy lbm benefits from 200+ MiB of SRAM (4 cores: 0.81–0.87x, vs 0.45x for the NPU,
    whose LPDDR5 reaches 126 ns loaded latency). Ramulator's LLC miss counters include MSHR retries, so DRAM accesses are used instead.
+6. **The program sets the shape of the memory stream; the memory system only rescales it.** The traces range
+   from pure streams (marian, sealcrypto: 99–100% stream) to scattered reuse (omnetpp: 89% re-referenced).
+   For five of eight benchmarks the PSD slope β varies by at most 0.05 across the five memory systems.
+    * Stationary: sealcrypto and omnetpp.
+    * Monofractal: stockfish, sqlite and zstd.
+    * Multifractal: marian, with 1/f<sup>2</sup> weight phases and a 10-request period, and nest.
+
+    Controller throughput follows IPC (CPU + DDR5 1.2–3.8x the GPUs). Row-buffer hits fall as the channel count
+    rises, so wide HBM turns even sequential streams into row misses.
 
 **Limitations.** Public-spec class parameters, not vendor models; analytical on-chip model on top of
 cycle-accurate DRAM; 16-bit weights; one 200M-instruction window per SPEC benchmark, C/C++ only, with instructions counted as LLVM IR

@@ -8,6 +8,7 @@ replaced with tables and figures generated from results/:
 
     {{arch_table}}  {{calib_table}}  {{ai_overview}}  {{ai_table:<scenario>}}
     {{spec_traces}} {{spec_table:<cores>}}  {{public_check}}  {{gpu_bound_pct}}  {{fig:<name>|<caption>}}
+    {{replay_config}}  {{pattern_table}}  {{mc_table:throughput|psd}}
 
 Outputs:
     output/memory_architecture_study_detailed.pdf  (from report/detailed.md)
@@ -25,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from memarch.architectures import load_all  # noqa: E402
+from memarch.architectures import load_all
 
 RES = ROOT / "results"
 FIG = RES / "figures"
@@ -51,6 +52,8 @@ class Data:
         self.ai = json.loads((RES / "ai/ai_results.json").read_text())
         p = RES / "spec/spec_results.json"
         self.spec = json.loads(p.read_text()) if p.exists() else None
+        p = RES / "spec/access_patterns.json"
+        self.patterns = json.loads(p.read_text()) if p.exists() else None
 
     def ai_row(self, workload, arch):
         return next(r for r in self.ai if r["workload"] == workload and r["arch"] == arch)
@@ -172,13 +175,80 @@ def spec_table(d, cores):
     return table(["Benchmark", "CPU IPC", "CPU DRAM acc./kinst"] + [a.label for a in d.archs], rows)
 
 
+def replay_config(d, _):
+    """System configuration of the SPEC replay (cf. Table I of Agarwal et al., ISCAS 2025)."""
+    if not d.spec:
+        return ""
+    core = d.spec["core"]
+    general = table(["Parameter", "Value"], [
+        ["Traces", ("8 SPEC CPU 2026 rate benchmarks (refrate, first workload); 30B instructions skipped, "
+                   "100M warm-up, 200M traced (LLVM IR instructions)")],
+        ["Private L1D / L2 (tracer)", "48 KiB 12-way / 2 MiB 16-way, 64 B lines, LRU, write-back"],
+        ["Core (Ramulator SimpleO3)", f"{core['ipc']}-wide, {core['window']}-entry window, {core['clock_ghz']:g} GHz"],
+        ["Shared LLC", f"architecture's SRAM, {core['llc_ways']}-way, {core['mshrs_per_core']} MSHRs per core"],
+        ["Memory controller", "one per channel; FR-FCFS, open row, MOP4CLXOR mapping, refresh, 64-entry queues"],
+        ["IPC study", "1 and 4 cores; warm: run(2N) - run(N), N = 100M (1 core) / 10M per core (4 cores)"],
+        ["Access-pattern study", ("1 core; 2 x 30M instructions, second half analysed; every DRAM command "
+                                 "recorded by Ramulator's CmdTraceRecorder")],
+    ])
+    get = {r["arch"]: r for r in d.spec["results"] if r["cores"] == 1}
+    rows = []
+    for a in d.archs:
+        r = get.get(a.name)
+        if r:
+            rows.append([a.label, gb(r["llc_bytes"]), f"{r['llc_latency_cycles']}",
+                         f"{r['llc_latency_cycles'] / core['clock_ghz']:.0f}", r["dram"]])
+    per_arch = table(["Architecture", "LLC (1 core)", "LLC hit (cycles)", "LLC hit (ns)", "DRAM"], rows)
+    return general + "\n\n" + per_arch
+
+
+def pattern_table(d, _):
+    if not d.patterns:
+        return "*Access-pattern results not available (run `python -m memarch patterns`).*"
+    rows = []
+    for t in d.patterns["traces"]:
+        loc = t["locality"]
+        rows.append([t["benchmark"], f"{t['mpki']:.2f}", f"{t['writebacks_per_miss']:.2f}",
+                     f"{t['interval_mean']:,.0f} / {t['interval_median']:,.0f}", f"{t['interval_cv']:.1f}",
+                     f"{loc['next line']:.0%}", f"{loc['same 4 KiB page']:.0%}", f"{loc['within 1 MiB']:.0%}",
+                     f"{loc['far']:.0%}", f"{t['stream_share']:.0%}", f"{t['rereference']:.0%}", f"{t['unique_MiB']:,.0f}",
+                     f"{t['trace_beta']:.2f} ({t['trace_psd_class']})"])
+    return table(["Benchmark", "L2 MPKI", "WB / miss", "Inter-miss mean / median (insts)", "CV", "Next line",
+                  "Same page", "≤1 MiB", "Far", "Stream", "Re-ref.", "Unique MiB", "PSD β (class)"], rows)
+
+
+def mc_table(d, kind):
+    if not d.patterns:
+        return ""
+    archs = [a for a in d.archs if a.name in d.patterns["archs"]]
+    get = {(r["benchmark"], r["arch"]): r for r in d.patterns["mc"]}
+    benches = [t["benchmark"] for t in d.patterns["traces"]]
+    short = {"stationary": "S", "monofractal": "M", "multifractal": "MF", "anti-persistent": "AP", "too short": "–"}
+    rows = []
+    for b in benches:
+        row = [b]
+        for a in archs:
+            r = get.get((b, a.name))
+            if r is None:
+                row.append("–")
+            elif kind == "throughput":
+                row.append(f"{r['throughput_GBps']:.2f}")
+            else:
+                row.append(f"{r['beta']:.2f} {short[r['psd_class']]}")
+        rows.append(row)
+    if kind == "throughput":
+        return table(["Benchmark"] + [f"{a.label} (GB/s)" for a in archs], rows)
+    return table(["Benchmark"] + [f"{a.label} β" for a in archs], rows)
+
+
 def fig(_, arg):
     name, caption = arg.split("|", 1)
     return f'<figure><img src="{(FIG / (name + ".png")).as_uri()}"><figcaption>{caption}</figcaption></figure>'
 
 
 TOKENS = {"arch_table": arch_table, "calib_table": calib_table, "ai_table": ai_table, "ai_overview": ai_overview,
-          "public_check": public_check, "gpu_bound_pct": gpu_bound_pct, "spec_traces": spec_traces, "spec_table": spec_table, "fig": fig}
+          "public_check": public_check, "gpu_bound_pct": gpu_bound_pct, "spec_traces": spec_traces, "spec_table": spec_table, "fig": fig,
+          "replay_config": replay_config, "pattern_table": pattern_table, "mc_table": mc_table}
 
 
 def render(text, d):

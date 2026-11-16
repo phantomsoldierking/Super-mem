@@ -26,7 +26,7 @@ from pathlib import Path
 from .architectures import load_all
 from .paths import RESULTS_DIR, TRACE_DIR
 
-CORE = dict(clock_ghz=4.0, ipc=4, window=128, llc_ways=16, mshrs_per_core=32)
+CORE = {"clock_ghz": 4.0, "ipc": 4, "window": 128, "llc_ways": 16, "mshrs_per_core": 32}
 OFFSET_ALIGN = 1 << 30
 # Instructions per measured pass (per core). Each job simulates N + 2N.
 DEFAULT_INSTS = {1: 100_000_000, 4: 10_000_000}
@@ -87,17 +87,17 @@ def _simulate(job):
     seconds = max(warm_cycles) / (CORE["clock_ghz"] * 1e9)
     ipc = [n / c for c in warm_cycles]
     rows = d["row_hits"] + d["row_misses"] + d["row_conflicts"]
-    return dict(
-        arch=job["arch"], benchmark=job["bench"], cores=cores, insts_per_core=n,
-        ipc_per_core=sum(ipc) / cores, ipc_min=min(ipc),
+    return {
+        "arch": job["arch"], "benchmark": job["bench"], "cores": cores, "insts_per_core": n,
+        "ipc_per_core": sum(ipc) / cores, "ipc_min": min(ipc),
         # LLC misses are reported as DRAM accesses per kilo-instruction (dram_apki, see postprocess): every
         # primary LLC miss issues one DRAM read. Ramulator's llc_read_misses/llc_read_access counters are bumped
         # before the MSHR check and so also count MSHR merges and retries; they are not used.
-        dram_GBps=(d["dram_reads"] + d["dram_writes"]) * 64 / seconds / 1e9,
-        dram_avg_read_latency_ns=lat_sum / d["dram_reads"] if d["dram_reads"] else 0.0,
-        row_hit_rate=d["row_hits"] / rows if rows else 0.0,
-        llc_latency_cycles=both["llc_latency_cycles"], llc_bytes=both["llc_bytes"], llc_ways=both["llc_ways"],
-        dram=f"{both['dram']['standard']} x{both['dram']['channels']}")
+        "dram_GBps": (d["dram_reads"] + d["dram_writes"]) * 64 / seconds / 1e9,
+        "dram_avg_read_latency_ns": lat_sum / d["dram_reads"] if d["dram_reads"] else 0.0,
+        "row_hit_rate": d["row_hits"] / rows if rows else 0.0,
+        "llc_latency_cycles": both["llc_latency_cycles"], "llc_bytes": both["llc_bytes"], "llc_ways": both["llc_ways"],
+        "dram": f"{both['dram']['standard']} x{both['dram']['channels']}"}
 
 
 def run(benchmarks=None, archs=None, core_counts=(1, 4), insts=None, mc_lines=1_500_000, jobs=None,
@@ -128,7 +128,7 @@ def run(benchmarks=None, archs=None, core_counts=(1, 4), insts=None, mc_lines=1_
             limit = (insts or DEFAULT_INSTS).get(cores, min((insts or DEFAULT_INSTS).values()))
             n = min(n, limit)
             for a in arch_names:
-                work.append(dict(arch=a, bench=t.stem, traces=[str(p) for p in paths], insts=n))
+                work.append({"arch": a, "bench": t.stem, "traces": [str(p) for p in paths], "insts": n})
     # Larger multi-core jobs first so the pool stays busy.
     work.sort(key=lambda j: -len(j["traces"]))
     results = []
@@ -146,7 +146,7 @@ def run(benchmarks=None, archs=None, core_counts=(1, 4), insts=None, mc_lines=1_
         arch_names = [a.name for a in load_all()]
     postprocess(results)
     results.sort(key=lambda r: (r["benchmark"], r["cores"], arch_names.index(r["arch"])))
-    (out_dir / "spec_results.json").write_text(json.dumps(dict(core=CORE, traces=meta, results=results), indent=2))
+    (out_dir / "spec_results.json").write_text(json.dumps({"core": CORE, "traces": meta, "results": results}, indent=2))
     _write_csv(out_dir / "spec_results.csv", results)
     return results
 

@@ -2,9 +2,9 @@ PY ?= .venv/bin/python
 SPEC_DIR ?= $(HOME)/spec/cpu2026
 export SPEC_DIR
 
-.PHONY: all ramulator venv tracer spec-install spec-build spec-trace calibrate ai spec spec-smoke figures report test
+.PHONY: all ramulator venv tracer spec-install spec-build spec-trace calibrate ai spec spec-smoke patterns figures report test
 
-all: ai spec figures report
+all: ai spec patterns figures report
 
 ramulator:
 	cd ramulator2 && ./build.sh
@@ -41,6 +41,10 @@ spec:
 SMOKE_OUT ?= /dev/shm/memarch-smoke
 spec-smoke:
 	$(PY) -m memarch spec --archs gpu_hbm3 --benchmarks 708.sqlite_r --cores 1 --insts 2000000 --jobs 1 --out $(SMOKE_OUT)
+
+# Access-pattern characterization of the SPEC traces: locality + inter-request PSD at the DRAM controllers
+patterns:
+	$(PY) -m memarch patterns --jobs 6
 
 figures:
 	$(PY) -m memarch figures

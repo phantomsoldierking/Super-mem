@@ -36,6 +36,7 @@ Seven memory-system archetypes are compared (public-spec class parameters, not v
 | SPEC install/build/trace | `make spec-install spec-build spec-trace` |
 | SPEC replay | `make spec` (≈3 h) — subsets: `--archs … --benchmarks … --cores … --merge` |
 | Smoke test | `make spec-smoke` (≈40 s, results to `/dev/shm/memarch-smoke`) |
+| Access patterns | `make patterns` (≈1 h): trace locality + inter-request PSD per DRAM system |
 | Figures, PDFs, tests | `make figures report test` |
 
 
@@ -112,6 +113,7 @@ LLVM IR instructions (IPC ≠ x86 IPC); AI-chip SRAM latencies seen from a CPU c
 | [memarch/workloads.py](memarch/workloads.py) | Operator graphs with FLOPs and bytes per traffic class |
 | [memarch/perf.py](memarch/perf.py) | Placement (cache / scratchpad / resident SRAM), roofline per op, collectives, energy |
 | [memarch/ai_study.py](memarch/ai_study.py), [memarch/cpu_study.py](memarch/cpu_study.py) | The two studies |
+| [memarch/access_patterns.py](memarch/access_patterns.py) | Access-pattern study: trace locality, DRAM command recording, inter-request PSD |
 | [tracer/](tracer) | LLVM 23 pass plugin + runtime that turns any C/C++ program into a Ramulator trace |
 | [spec/](spec) | SPEC CPU 2026 config, build script and trace driver |
 | [results/](results) | CSV/JSON results and figures |
@@ -136,8 +138,9 @@ SPEC CPU 2026 (from `cpu2026-1.0.1.iso`, licensed separately and not redistribut
 make spec-install  # extract ISO to ~/spec/iso, install to ~/spec/cpu2026
 make spec-build    # clang + MemTracePass build of the benchmarks in spec/benchmarks.txt
 make spec-trace    # 200M-instruction L2-miss traces into traces/spec/
-make spec-smoke    # ~1 min check: one short replay, results to /dev/shm/memarch-smoke
+make spec-smoke    # ~40 s check: one short replay, results to /dev/shm/memarch-smoke
 make spec          # replay on all architectures, 1 and 4 cores (about 3 hours on 12 threads)
+make patterns      # access-pattern study: locality + inter-request PSD at the DRAM controllers (~1 h)
 ```
 
 The vendor toolset links `libcrypt.so.1`; on distributions that ship only

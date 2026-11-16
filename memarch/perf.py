@@ -132,7 +132,7 @@ def evaluate(arch, wl, calibration=None, chips=None):
         pattern = TRAFFIC_PATTERN[cls]
         return calibration["patterns"][pattern]["achieved_GBps"] * 1e9
 
-    totals = dict(compute=0.0, memory=0.0, comm=0.0, overhead=0.0, sram=0.0, dram=0.0, wire=0.0)
+    totals = {"compute": 0.0, "memory": 0.0, "comm": 0.0, "overhead": 0.0, "sram": 0.0, "dram": 0.0, "wire": 0.0}
     energy_mem = 0.0
     bound_time = {"compute": 0.0, "memory": 0.0}
     for op in wl.ops:

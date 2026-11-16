@@ -56,7 +56,7 @@ def sweep_batch(arch_names=None, model="llama3_1_8b", context=2048, batches=(1, 
     rows = []
     for a in archs:
         for b in batches:
-            wl = build(dict(id=f"{model}_b{b}", model=model, phase="decode", batch=b, context=context))
+            wl = build({"id": f"{model}_b{b}", "model": model, "phase": "decode", "batch": b, "context": context})
             r = evaluate(a, wl, calib[a.name]).row()
             r.update(batch=b, context=context, model=model)
             rows.append(r)
@@ -75,7 +75,7 @@ def sweep_context(arch_names=None, model="llama3_1_8b", batch=8,
     rows = []
     for a in archs:
         for c in contexts:
-            wl = build(dict(id=f"{model}_c{c}", model=model, phase="decode", batch=batch, context=c))
+            wl = build({"id": f"{model}_c{c}", "model": model, "phase": "decode", "batch": batch, "context": c})
             r = evaluate(a, wl, calib[a.name]).row()
             r.update(batch=batch, context=c, model=model)
             rows.append(r)
