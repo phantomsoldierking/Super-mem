@@ -1,0 +1,716 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds}
+\usepackage{url}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\dbltopfraction}{0.9}
+\renewcommand{\textfraction}{0.1}
+\renewcommand{\floatpagefraction}{0.8}
+\renewcommand{\dblfloatpagefraction}{0.8}
+\setcounter{topnumber}{3}
+\setcounter{dbltopnumber}{3}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{\sc e\kern-.125em x}}}
+
+\newcommand{\tmx}{\ensuremath{\times}}
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+
+% Second row of authors (as in the IEEE conference template on Overleaf)
+\makeatletter
+\newcommand{\linebreakand}{%
+  \end{@IEEEauthorhalign}
+  \hfill\mbox{}\par\vspace{10pt}
+  \mbox{}\hfill\begin{@IEEEauthorhalign}
+}
+\makeatother
+
+\begin{document}
+
+\title{Memory Architectures of AI Inference Chips:\\
+Cycle-Accurate Evaluation and Spectral\\ Access-Pattern Analysis}
+
+\author{\IEEEauthorblockN{Dr. Prabhu Prasad B M}
+\IEEEauthorblockA{\textit{Indian Institute of Information}\\
+\textit{Technology Dharwad}\\
+Dharwad, Karnataka, India
+% \\ email address or ORCID
+}
+\linebreakand
+\IEEEauthorblockN{G. V. Prajwal}
+\IEEEauthorblockA{\textit{Indian Institute of Information}\\
+\textit{Technology Dharwad}\\
+Dharwad, Karnataka, India
+% \\ email address or ORCID
+}
+\and
+\IEEEauthorblockN{Siddhaartha B. S.}
+\IEEEauthorblockA{\textit{Indian Institute of Information}\\
+\textit{Technology Dharwad}\\
+Dharwad, Karnataka, India
+% \\ email address or ORCID
+}
+\and
+\IEEEauthorblockN{Yogeshgouda Patil}
+\IEEEauthorblockA{\textit{Indian Institute of Information}\\
+\textit{Technology Dharwad}\\
+Dharwad, Karnataka, India
+% \\ email address or ORCID
+}
+}
+
+\maketitle
+
+\begin{abstract}
+AI inference chips differ less in their arithmetic than in their memory systems: HBM GPUs, SRAM-plus-GDDR6 meshes, SRAM-plus-LPDDR5 NPUs and SRAM-only designs place on-chip SRAM and off-chip DRAM in very different roles. We present a reproducible framework that evaluates seven memory-system archetypes on (a)~twelve AI inference scenarios and (b)~memory traces of eight SPEC CPU~2026 benchmarks, using one cycle-accurate DRAM model (Ramulator~2.1) underneath both. An analytical operator model uses DRAM bandwidth measured per access pattern; an LLVM pass plugin converts SPEC programs into L2-miss traces that are replayed on a common out-of-order core; and every DRAM command is recorded to study the inter-request time at the memory controllers with its power spectral density (PSD). On batch-1 Llama-3.1 decode, SRAM-resident designs are 6.3--8.8\tmx{} faster than an HBM3 GPU, but the LPU-class design needs 76--654 chips and delivers only 1/12--1/37 of the GPU's throughput per chip. HBM3/HBM4, LPDDR5 and GDDR6 keep only 58\%/46\%, 45\% and 24\% of pin bandwidth on random 64\,B accesses, against 86\% for DDR5. On general-purpose code the same memory systems reach only 0.32--0.83\tmx{} the geometric-mean IPC of a CPU with DDR5, because IPC follows last-level-cache hit latency. The PSD slope of the controller request stream varies by at most 0.05 across memory systems for five of eight benchmarks: the program sets the shape of the request stream, and the memory system rescales its timing.
+\end{abstract}
+
+\begin{IEEEkeywords}
+AI accelerators, DRAM, HBM, SRAM, memory hierarchy, Ramulator, LLVM, SPEC CPU 2026, power spectral density, memory controller
+\end{IEEEkeywords}
+
+%=====================================================================
+\section{Introduction}
+%=====================================================================
+Large-language-model (LLM) inference is limited by data movement more than by arithmetic~\cite{wulf1995,gholami2024}. At batch~1, every generated token reads all model weights and the key--value (KV) cache once, so step time is set by how fast memory delivers bytes. Chip designers have answered with very different memory systems. GPUs pair a modest cache with high-bandwidth memory (HBM)~\cite{choquette2023}. Dataflow meshes and NPUs pair a large, compiler-managed scratchpad with commodity GDDR6 or LPDDR5~\cite{vasiljevic2021}. SRAM-only designs such as the Groq LPU~\cite{abts2020} and the Cerebras wafer-scale engine~\cite{lie2023} eliminate DRAM and keep all state on chip.
+
+Datasheet peak bandwidth hides two effects that decide real performance. First, the bandwidth a DRAM system \emph{achieves} depends on the access pattern: row-buffer locality, bank-level parallelism and refresh can lose most of the pin bandwidth on gathers. Second, the same memory systems are increasingly expected to run general-purpose code (tokenization, scheduling, data preparation) whose irregular, latency-bound accesses differ sharply from inference streams. A third, less studied question is \emph{how} requests arrive at the memory controllers: Agarwal~\emph{et~al.}~\cite{agarwal2025} showed that the power spectral density (PSD) of inter-arrival times at the memory controller characterises the predictability of memory access in network-on-chip (NoC) systems.
+
+This paper studies the three effects on one consistent substrate. Its contributions are:
+\begin{enumerate}
+\item A reproducible framework that describes a chip's memory system in one configuration file and evaluates it with cycle-accurate DRAM (Ramulator~2.1~\cite{luo2024}) on twelve AI inference scenarios and on eight SPEC CPU~2026 benchmarks.
+\item A per-access-pattern DRAM calibration of DDR5, LPDDR5, GDDR6, HBM3 and HBM4 that feeds an operator-level placement, timing and energy model of inference.
+\item An LLVM pass plugin and runtime that turn any C/C++ program into a Ramulator trace of private-L2 misses, used to replay SPEC CPU~2026 on each memory system with an identical out-of-order core.
+\item A controller-level access-pattern characterization that records every DRAM command, computes the inter-request time series and its PSD, and classifies it as stationary, monofractal, multifractal or anti-persistent. This extends the qualitative classes of~\cite{agarwal2025} with explicit slope thresholds and an anti-persistent class.
+\end{enumerate}
+
+Section~\ref{sec:related} reviews related work. Section~\ref{sec:model} defines the problem and system model, and Section~\ref{sec:math} the mathematical formulation. Section~\ref{sec:method} presents the methodology and its algorithms, Section~\ref{sec:setup} the baselines and experimental setup, and Section~\ref{sec:results} the results. Section~\ref{sec:conclusion} concludes.
+
+%=====================================================================
+\section{Related Work}\label{sec:related}
+%=====================================================================
+\textbf{Memory-bound inference.} The memory wall~\cite{wulf1995} has become the dominant limit of transformer inference~\cite{gholami2024}. Pope~\emph{et~al.}~\cite{pope2023} model the partitioning of LLM inference across accelerators, and PagedAttention~\cite{kwon2023} stores the KV cache in fixed-size pages, which turns KV reads into page gathers. The roofline model~\cite{williams2009} bounds performance by peak compute and peak bandwidth. Our operator model is a roofline per operator, but it replaces peak bandwidth with the bandwidth Ramulator achieves for each traffic class.
+
+\textbf{AI accelerator memory systems.} The TPU~\cite{jouppi2017} combined a large on-chip buffer with off-chip DRAM. The Groq tensor streaming processor~\cite{abts2020} and the Cerebras wafer-scale engine~\cite{lie2023} keep all state in SRAM. Tenstorrent's mesh~\cite{vasiljevic2021} pairs per-core SRAM with GDDR6, and NVIDIA's H100~\cite{choquette2023} uses HBM3. These architectures are usually compared on vendor benchmarks. We compare their \emph{memory systems} under one model with public-specification class parameters.
+
+\textbf{DRAM simulation.} Ramulator~\cite{kim2016} and Ramulator~2.0~\cite{luo2024} provide cycle-accurate, extensible models of DRAM standards and controllers. FR-FCFS scheduling~\cite{rixner2000} and the interaction of workloads with DRAM internals~\cite{ghose2019} are well established. NVMExplorer~\cite{pentecost2022} explores on-chip memory technologies across the stack. We use Ramulator~2.1 both to calibrate access patterns and as the memory back end of trace replay.
+
+\textbf{Workload characterization.} SPEC CPU suites have been characterised with binary instrumentation such as Pin~\cite{luk2005,jaleel2007} and hardware counters~\cite{limaye2018}, and DAMOV~\cite{oliveira2021} classifies data-movement bottlenecks. We instrument at the LLVM IR level~\cite{lattner2004}, which keeps the tracer portable and inside the SPEC build harness.
+
+\textbf{Predictability of memory traffic.} Bogdan~\emph{et~al.}~\cite{bogdan2010} showed that NoC traffic is non-stationary and fractal. Agarwal~\emph{et~al.}~\cite{agarwal2025} used the PSD of inter-packet arrival times at the memory controller to show how cache, buffer and network size shift traffic between stationary, monofractal and multifractal behaviour. ATLAS~\cite{kim2010} schedules across multiple memory controllers. We apply the PSD methodology of~\cite{agarwal2025} at the DRAM command level across five DRAM technologies.
+
+%=====================================================================
+\section{Problem Scenario and System Model}\label{sec:model}
+%=====================================================================
+\subsection{Problem Scenario}
+A system architect must choose a memory system for an inference chip. The candidates differ in the size and role of on-chip SRAM and in the DRAM technology behind it. The architect needs to know, for realistic workloads, (i)~the step latency, the number of chips needed to hold the model, throughput per chip and energy per token; (ii)~how much of the DRAM's pin bandwidth each access pattern actually obtains; (iii)~how the same memory system serves latency-sensitive general-purpose code; and (iv)~how predictable the resulting request stream is at the memory controllers. All four must be answered with the compute core held fixed, so that only the memory system varies.
+
+\subsection{Memory-System Archetypes}
+Table~\ref{tab:arch} lists the seven archetypes. Their values are public-specification \emph{class} values (orders of magnitude of shipping parts), not calibrated vendor models. The role of the SRAM is the key distinction:
+\begin{itemize}
+\item \emph{cache} (CPU, GPU): hardware-managed least-recently-used (LRU) cache. A cyclic weight or KV stream larger than the cache misses on every access.
+\item \emph{scratchpad} (mesh, NPU): compiler-managed. Activations are pinned first, then as much persistent state as fits; the rest streams from DRAM.
+\item \emph{resident} (LPU, wafer): there is no DRAM. All state is held in SRAM, so the chip count is set by capacity.
+\end{itemize}
+
+\begin{table*}[t]
+\caption{Memory-system archetypes (public-specification class values)}
+\label{tab:arch}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llllrrr@{}}
+\toprule
+Archetype & SRAM (role) & SRAM BW, latency & DRAM (channels, capacity, pin BW) & TFLOPS (bf16) & Link GB/s & TDP W\\
+\midrule
+CPU + DDR5 & 96 MiB (cache) & 3 TB/s, 14 ns & DDR5 \tmx16, 512 GiB, 307 GB/s & 120 & 64 & 350\\
+GPU + HBM3 & 50 MiB (cache) & 7 TB/s, 120 ns & HBM3 \tmx64, 80 GiB, 3,277 GB/s & 989 & 450 & 700\\
+GPU + HBM4 & 128 MiB (cache) & 16 TB/s, 120 ns & HBM4 \tmx128, 288 GiB, 8,192 GB/s & 2,500 & 900 & 1,200\\
+Mesh + SRAM + GDDR6 & 210 MiB (scratchpad) & 24 TB/s, 60 ns & GDDR6 \tmx8, 32 GiB, 448 GB/s & 370 & 400 & 300\\
+NPU + SRAM + LPDDR5 & 144 MiB (scratchpad) & 12 TB/s, 40 ns & LPDDR5 \tmx8, 64 GiB, 205 GB/s & 200 & 32 & 75\\
+LPU (SRAM only) & 230 MiB (resident) & 80 TB/s, 30 ns & none & 188 & 330 & 300\\
+Wafer-scale SRAM & 44 GiB (resident) & 21,000 TB/s, 200 ns & none & 62,500 & 150 & 23,000\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Workloads}
+\textbf{AI inference.} The twelve scenarios cover Llama-3.1-8B and 70B~\cite{llama3} decode (batch 1 and 32, plus a 32k-token-context case) and prefill (2,048 tokens); Mixtral-8x7B~\cite{jiang2024}, a mixture-of-experts (MoE) model with top-2 of 8 experts, at batch 1 and 32; ResNet-50~\cite{he2016} at batch 1 and 64; and a DLRM-DCNv2-shaped recommender~\cite{naumov2019,wang2021} with 26 tables holding 250M rows in total (64\,GB) at batch 2,048. Weights are 16-bit. Each operator records its FLOPs and the bytes it moves per \emph{traffic class}: weights, KV reads, KV writes and activations, and embedding gathers.
+
+\textbf{General-purpose code.} Eight C/C++ rate benchmarks of SPEC CPU~2026~\cite{spec2026} were chosen for varied memory behaviour: 706.stockfish (chess search), 708.sqlite (database), 710.omnetpp (discrete-event simulation), 750.sealcrypto (homomorphic encryption), 767.nest (spiking neural networks), 772.marian (neural machine translation), 777.zstd (compression) and 782.lbm (lattice-Boltzmann fluid dynamics).
+
+\subsection{Memory Subsystem Model}
+Each DRAM system is instantiated in Ramulator~2.1 with one controller per channel: FR-FCFS scheduling~\cite{rixner2000}, open-row policy, refresh enabled, 64-entry read and write queues, the MOP4CLXOR address mapping and cache-line channel interleaving. The SPEC replay uses Ramulator's SimpleO3 core, a 4-wide out-of-order core at 4\,GHz with a 128-entry window and 32 MSHRs per core. The architecture's on-chip SRAM becomes a shared last-level cache (LLC) with power-of-two sets and 16--29 ways with that SRAM's latency, backed by the architecture's DRAM. The SRAM-only designs reach a 2-channel DDR5 host memory for spills.
+
+%=====================================================================
+\section{Mathematical Formulation}\label{sec:math}
+%=====================================================================
+\subsection{Achieved DRAM Bandwidth}
+For DRAM system $d$ and access pattern $p$, Ramulator reports the achieved bandwidth $B_d(p)$, summed over channels. Its efficiency is
+\begin{equation}
+\varepsilon_d(p) = B_d(p)/B_d^{\mathrm{pin}}.\label{eq:eff}
+\end{equation}
+The five patterns $p$ are a sequential read stream, a 2:1 read/write stream, a 4\,KiB page gather, a 256\,B row gather and uniform random 64\,B lines. A mapping $\pi(c)$ assigns each traffic class $c$ to its pattern: weights $\mapsto$ stream; KV reads $\mapsto$ page gather; KV writes and activations $\mapsto$ read/write stream; embeddings $\mapsto$ row gather.
+
+\subsection{Chip Count and Placement}
+Let $P$ be the persistent state (weights, KV cache, tables), $A$ the peak activation bytes, $C$ the memory capacity per chip and $\eta=0.9$ the usable fraction. The number of chips is
+\begin{equation}
+n = \min\{\, n\in\mathbb{N} : (P + A)/n \le \eta\, C \,\}.\label{eq:chips}
+\end{equation}
+With SRAM capacity $S$, the fraction $\phi$ of persistent traffic served from SRAM depends on the role:
+\begin{equation}
+\phi = \begin{cases}
+1 & \text{resident},\\[2pt]
+\min\!\left(1, \dfrac{\max(0,\ \eta S - a)}{P/n}\right) & \text{scratchpad},\\[8pt]
+\mathbb{1}\!\left[\tfrac{P+A}{n} \le 0.8\,\eta S\right] & \text{cache},
+\label{eq:phi}
+\end{cases}
+\end{equation}
+where $a=A/n$ if the activations fit ($A/n\le\eta S$) and $a=0$ otherwise. Activations are on chip if $A/n \le \eta S$ (scratchpad) or $A/n \le 0.5\,\eta S$ (cache).
+
+\subsection{Operator Time and Step Time}
+Operator $o$ has $F_o$ FLOPs and moves $b_{o,c}$ bytes of class $c$, of which $s_{o,c}=\phi_c b_{o,c}/n$ go to SRAM and $m_{o,c}=(1-\phi_c)\,b_{o,c}/n$ to DRAM per chip. Here $\phi_c=\phi$ for weights, KV cache and embeddings, and $\phi_c\in\{0,1\}$ for activations, depending on whether they are on chip. With effective peak $\Pi$ (matrix peak times its efficiency, or half the vector peak), SRAM bandwidth $B_S$ and SRAM pattern efficiency $\varepsilon_S$ (0.9 stream, 0.85 read/write stream and page gather, 0.7 row gather),
+\begin{align}
+t^{\mathrm{c}}_o &= \frac{F_o}{n\,\Pi}, \label{eq:tc}\\
+t^{\mathrm{m}}_o &= \max\!\Big(\sum_c \frac{s_{o,c}}{B_S\,\varepsilon_S(\pi(c))},\ \sum_c \frac{m_{o,c}}{B_d(\pi(c))}\Big), \label{eq:tm}\\
+T &= \sum_o \max\!\left(t^{\mathrm{c}}_o, t^{\mathrm{m}}_o\right) + \sum_o t^{\mathrm{x}}_o + N_{\mathrm{op}}\,\tau, \label{eq:step}
+\end{align}
+where $\tau$ is the per-operator launch or synchronization overhead (3\,$\mu$s GPU, 2\,$\mu$s CPU, mesh and NPU) and $t^{\mathrm{x}}_o$ the collective time. Tensor parallelism over $n$ chips adds all-reduces of payload $M$ with hop latency $h$ and link bandwidth $L$, and all-to-alls for embeddings:
+\begin{align}
+t_{\mathrm{AR}} &= 2\lceil\log_2 n\rceil h + \frac{2(n-1)}{n}\,\frac{M}{L}, \label{eq:ar}\\
+t_{\mathrm{A2A}} &= \lceil\log_2 n\rceil h + \frac{n-1}{n^2}\,\frac{M}{L}.\label{eq:a2a}
+\end{align}
+
+\subsection{Energy}
+With $e_S$, $e_D$ and $e_L$ the SRAM, DRAM and link energies per bit, $W$ the bytes on the wires of all chips, $F$ the total FLOPs and $U$ the tokens (or images, samples) per step, the energies per token are
+\begin{align}
+E_{\mathrm{dyn}} &= \frac{8n\big(e_S\sum s + e_D\sum m\big) + 8 e_L W + 0.4\,\mathrm{pJ}\cdot F}{U},\label{eq:edyn}\\
+E_{\mathrm{TDP}} &= n\cdot \mathrm{TDP}\cdot T / U.\label{eq:etdp}
+\end{align}
+$E_{\mathrm{TDP}}$ is an upper bound that includes static power.
+
+\subsection{Trace Replay Metrics}
+Each point is simulated for $N$ and for $2N$ instructions and the difference is reported, i.e.\ instructions $N..2N$ with the LLC warmed by the first $N$. The traces hold 200M instructions, so with $N=100$M the measured part is the second half of the trace window rather than a second pass over the same instructions. With $\kappa(\cdot)$ the core cycles, $D(\cdot)$ the DRAM accesses of all $c$ cores and $N$ the instructions per core,
+\begin{equation}
+\mathrm{IPC} = \frac{N}{\kappa(2N)-\kappa(N)},\quad
+\mathrm{APKI} = \frac{1000\,[D(2N)-D(N)]}{c\,N}.\label{eq:ipc}
+\end{equation}
+Speedup is $\mathrm{IPC}/\mathrm{IPC}_{\mathrm{CPU+DDR5}}$, aggregated across benchmarks with the geometric mean.
+
+\subsection{Access-Pattern Metrics}
+\textbf{Trace level.} For the L2-miss sequence with line addresses $\ell_i$ (64\,B), byte addresses $a_i$ and inter-miss intervals $\Delta_i$ in instructions, the stride $\delta_i=a_i-a_{i-1}$ is classified as \emph{next line} ($\delta_i=64$), \emph{same 4\,KiB page}, \emph{within 1\,MiB} or \emph{far}. The stream share and re-reference share are
+\begin{align}
+\sigma &= \frac{1}{M-1}\sum_{i=2}^{M}\mathbb{1}\!\left[\exists k\in\{1,\dots,16\}: \ell_i-\ell_{i-k}=1\right],\label{eq:sigma}\\
+\rho &= 1 - U_\ell/M,\label{eq:rho}
+\end{align}
+with $M$ misses and $U_\ell$ unique lines. The coefficient of variation $\mathrm{CV}=\mathrm{std}(\Delta)/\mathrm{mean}(\Delta)$ measures burstiness.
+
+\textbf{Controller level.} Let $t_1\le t_2\le\dots$ be the issue times of all column commands (RD, WR, RDA, WRA) merged over channels. The recorder observes when a command is \emph{issued}, so this is the service-side counterpart of the inter-packet arrival time of~\cite{agarwal2025}. The replay runs $2N$ instructions, and an identical $N$-instruction run gives the time $T_N=\kappa(N)/f_{\mathrm{core}}$ at which the core reaches instruction $N$; the warm window is $T_N\le t_j\le T_{2N}$, i.e.\ instructions $N..2N$ with the LLC warmed by the first $N$ (the simulation is deterministic). The inter-request time series is $x_j=t_{j+1}-t_j$, and the average throughput is
+\begin{equation}
+\Theta = \frac{64\,J}{T_{2N}-T_N},\label{eq:theta}
+\end{equation}
+for $J$ requests in the window. The one-sided Welch estimate~\cite{welch1967} of the PSD, with periodic Hann window $w$, segment length $L_s$, 50\% overlap and $K$ segments, is
+\begin{equation}
+\hat S(f) = \frac{c_f}{K\sum_{q} w_q^2}\sum_{k=1}^{K}\Big|\sum_{q=0}^{L_s-1} w_q\,(x_{k,q}-\bar x_k)\,e^{-\mathrm{i}2\pi f q}\Big|^2,\label{eq:welch}
+\end{equation}
+with $c_f=1$ at the Nyquist frequency and $c_f=2$ elsewhere, $f$ in cycles per request and $L_s=2^{\min(14,\max(8,\lfloor\log_2(J/8)\rfloor))}$. $\hat S$ is averaged geometrically into 32 logarithmically spaced bins, and the slope $\beta$ of $\hat S(f)\propto 1/f^{\beta}$ is fitted by least squares in log-log space over the whole range ($\beta$), the low-frequency half ($\beta_{\mathrm{lo}}$) and the high-frequency half ($\beta_{\mathrm{hi}}$), split at the midpoint of $\log f$. The class is assigned by the first rule that holds:
+\begin{equation}
+\mathcal{C} = \begin{cases}
+\text{multifractal} & |\beta_{\mathrm{lo}}-\beta_{\mathrm{hi}}| \ge 0.5,\\
+\text{anti-persistent} & \beta \le -0.3,\\
+\text{stationary} & |\beta|<0.3,\ |\beta_{\mathrm{lo}}|<0.4,\ |\beta_{\mathrm{hi}}|<0.4,\\
+\text{monofractal} & \text{otherwise.}
+\end{cases}\label{eq:class}
+\end{equation}
+The thresholds and the anti-persistent class are ours; the interpretation follows~\cite{agarwal2025}: a stationary (flat) spectrum means a predictable request flow, a single $1/f^\beta$ line a monofractal one, and several scaling regimes a multifractal, least predictable one. Negative $\beta$ means that power rises with frequency: short and long gaps alternate.
+
+%=====================================================================
+\section{Proposed Methodology}\label{sec:method}
+%=====================================================================
+Fig.~\ref{fig:framework} shows the framework. Both studies share the Ramulator DRAM systems. The AI study consumes their calibrated bandwidth, and the SPEC study drives them directly with traces.
+
+\begin{figure*}[t]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=9mm, text width=38mm, fill=white},
+  grp/.style={draw, rounded corners=4pt, inner sep=6pt},
+  arr/.style={-{Stealth[length=2mm]}, semithick},
+  node distance=5mm and 7mm]
+% SPEC tracing column
+\node[box] (spec) {SPEC CPU 2026 sources\\(8 C/C++ benchmarks)};
+\node[box, below=of spec] (pass) {clang -O2 + LLVM pass\\(\texttt{\_\_mt\_*} hooks)};
+\node[box, below=of pass] (rt) {Runtime: skip 30B, warm 100M,\\trace 200M; L1D 48K + L2 2M};
+\node[box, below=of rt] (trace) {L2-miss trace\\$\langle$bubble, addr, [wb]$\rangle$};
+% Ramulator column
+\node[box, right=14mm of pass, fill=orange!8] (calib) {Ramulator 2.1 calibration\\5 access patterns $\rightarrow B_d(p)$};
+\node[box, right=14mm of trace, fill=orange!8] (o3) {SimpleO3 replay\\4-wide, SRAM as LLC, DRAM};
+\node[box, below=of o3, fill=orange!8] (rec) {CmdTraceRecorder\\(every DRAM command)};
+% Analysis column
+\node[box, right=14mm of calib, fill=green!6] (ai) {Operator model\\placement, Eq.~\eqref{eq:step}, energy};
+\node[box, above=of ai, fill=yellow!10] (cfg) {Architecture + model\\configurations};
+\node[box, right=14mm of o3, fill=green!6] (ipc) {IPC, APKI, latency,\\row-hit rate};
+\node[box, right=14mm of rec, fill=green!6] (psd) {Inter-request time,\\Welch PSD, $\beta$, class};
+\node[box, right=14mm of rt, fill=green!6] (loc) {Trace locality,\\stream / re-reference};
+\begin{scope}[on background layer]
+\node[grp, fill=blue!4, fit=(spec)(trace), label={[font=\scriptsize\bfseries]above:LLVM tracing}] {};
+\end{scope}
+\draw[arr] (spec) -- (pass);
+\draw[arr] (pass) -- (rt);
+\draw[arr] (rt) -- (trace);
+\draw[arr] (trace) -- (o3);
+\draw[arr] (o3) -- (rec);
+\draw[arr] (calib) -- node[above, font=\scriptsize]{$B_d(p)$} (ai);
+\draw[arr] (cfg) -- (ai);
+\draw[arr] (o3) -- (ipc);
+\draw[arr] (rec) -- (psd);
+\draw[arr] (trace.north east) -- (loc.west);
+\end{tikzpicture}
+\caption{Framework. Only the memory system differs between architectures: the same operator graphs are used for AI and the same core for SPEC.}
+\label{fig:framework}
+\end{figure*}
+
+\subsection{DRAM Calibration}
+For each DRAM system, five synthetic traces (each at least 120k requests, 2,000 per channel for wide systems) are replayed with Ramulator's load--store trace frontend. The achieved bandwidth $B_d(p)$ is cached and reused. Integration required several fixes to obtain physically sensible DRAM behaviour:
+\begin{itemize}
+\item The default row--bank--rank--column--channel mapping placed consecutive lines in one bank group, so an HBM3 stream reached 51\% of pin bandwidth. The MOP4CLXOR mapping raises HBM3 and HBM4 to 99\%.
+\item 16-bit LPDDR5 and GDDR6 channels move 32\,B, so 64\,B lines skipped every other channel. Channels were ganged into 32-bit pairs.
+\item HBM pseudo-channels carry 32\,B, so 64\,B requests use two back-to-back bursts to the open row.
+\item HBM controllers tick at half the command clock (tick multiplier 2). The tick period (312/250\,ps for HBM3/HBM4) is used both for the core-to-DRAM clock ratio and for converting cycles to nanoseconds.
+\end{itemize}
+
+\subsection{Operator-Level Inference Evaluation}
+Algorithm~\ref{alg:eval} evaluates one inference step on one architecture. It implements Eqs.~\eqref{eq:chips}--\eqref{eq:etdp}.
+
+\begin{algorithm}[t]
+\caption{Operator-level evaluation of one inference step}
+\label{alg:eval}
+\begin{algorithmic}[1]
+\REQUIRE architecture $\mathcal{A}$, workload operators $\mathcal{O}$, calibration $B_d(\cdot)$
+\ENSURE step time $T$, chips $n$, energy, bound class
+\STATE $n \leftarrow \min\{n : (P+A)/n \le \eta C\}$ \hfill Eq.~\eqref{eq:chips}
+\STATE compute $\phi$ from the SRAM role \hfill Eq.~\eqref{eq:phi}
+\STATE $T_{\mathrm{c}}, T_{\mathrm{m}}, T_{\mathrm{x}}, T_{\mathrm{o}} \leftarrow 0$
+\FORALL{$o \in \mathcal{O}$}
+  \STATE $t^{\mathrm{c}} \leftarrow F_o/(n\Pi)$
+  \FORALL{traffic class $c$ of $o$}
+    \STATE split $b_{o,c}/n$ into $s_{o,c}$ (SRAM) and $m_{o,c}$ (DRAM)
+    \STATE add $s_{o,c}/(B_S\varepsilon_S)$ to $t^{\mathrm{S}}$ and $m_{o,c}/B_d(\pi(c))$ to $t^{\mathrm{D}}$
+  \ENDFOR
+  \STATE $t^{\mathrm{m}} \leftarrow \max(t^{\mathrm{S}}, t^{\mathrm{D}})$
+  \STATE $t^{\mathrm{x}} \leftarrow t_{\mathrm{AR}}$ or $t_{\mathrm{A2A}}$ for the operator's collective \hfill Eqs.~\eqref{eq:ar}--\eqref{eq:a2a}
+  \IF{$t^{\mathrm{c}} \ge t^{\mathrm{m}}$} \STATE $T_{\mathrm{c}} \mathrel{+}= t^{\mathrm{c}}$ \ELSE \STATE $T_{\mathrm{m}} \mathrel{+}= t^{\mathrm{m}}$ \ENDIF
+  \STATE $T_{\mathrm{x}} \mathrel{+}= t^{\mathrm{x}}$; \ $T_{\mathrm{o}} \mathrel{+}= \tau$
+\ENDFOR
+\STATE $T \leftarrow T_{\mathrm{c}} + T_{\mathrm{m}} + T_{\mathrm{x}} + T_{\mathrm{o}}$ \hfill Eq.~\eqref{eq:step}
+\RETURN $T$, $n$, energy (Eqs.~\eqref{eq:edyn}--\eqref{eq:etdp}), $\arg\max\{T_{\mathrm{c}},T_{\mathrm{m}},T_{\mathrm{x}},T_{\mathrm{o}}\}$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{LLVM Tracer}
+\texttt{MemTracePass} is a new-pass-manager plugin registered at \texttt{OptimizerLastEP}, so it instruments the \emph{optimized} code: values promoted to SSA registers do not appear as memory accesses. Masked vector loads and stores, gathers, and code in uninstrumented libraries such as libc are not traced; the masked and gather instructions occur at only 0--13 static sites per benchmark binary. It inserts \texttt{\_\_mt\_bb($k$)} with the instruction count $k$ of each basic block, and before every load, store, atomic and memory intrinsic it inserts a call carrying the pointer and access size. The runtime (Algorithm~\ref{alg:trace}) is linked into each benchmark through SPEC's own \texttt{runcpu} build. Instruction counts are LLVM IR instructions.
+
+\begin{algorithm}[t]
+\caption{Tracer runtime (per instrumented event)}
+\label{alg:trace}
+\begin{algorithmic}[1]
+\REQUIRE phase lengths $I_{\mathrm{skip}}=30\mathrm{B}$, $I_{\mathrm{warm}}=100\mathrm{M}$, $I_{\mathrm{trace}}=200\mathrm{M}$
+\STATE \textbf{on} \texttt{\_\_mt\_bb}($k$): $I \leftarrow I + k$; advance the phase when $I$ crosses a boundary
+\STATE \textbf{on} access($v$, size, is\_store):
+\IF{phase $=$ skip} \RETURN \ENDIF
+\STATE $p \leftarrow$ first-touch physical frame of page($v$)
+\FORALL{64\,B line $\ell$ covered by the access}
+  \STATE look up $\ell$ in L1D (48\,KiB, 12-way, LRU, write-back)
+  \IF{L1 miss}
+    \STATE look up $\ell$ in L2 (2\,MiB, 16-way, non-inclusive); queue dirty victims
+    \IF{L2 miss \AND phase $=$ trace}
+      \STATE emit $\langle I - I_{\mathrm{last}} - 1,\ \ell,\ [\text{dirty victim}]\rangle$; $I_{\mathrm{last}} \leftarrow I$
+    \ENDIF
+  \ENDIF
+\ENDFOR
+\STATE \textbf{exit} after $I_{\mathrm{trace}}$ traced instructions; write counts to JSON
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{SPEC Replay}
+Every trace is replayed on all seven architectures with 1 core ($N=100$M) and with 4 cores ($N=10$M per core). In 4-core runs each core replays its own copy of the trace in a disjoint address range and all cores share the LLC and DRAM. This gives $8\times7\times2=112$ results.
+
+\subsection{Controller-Level Access-Pattern Characterization}
+Algorithm~\ref{alg:psd} records every DRAM command with Ramulator's \texttt{CmdTraceRecorder} controller plugin on each channel of the five DRAM-backed systems. A completeness check guards against silent loss: the number of recorded column commands must equal the read and write requests served by Ramulator.
+
+\begin{algorithm}[t]
+\caption{Controller-level PSD characterization}
+\label{alg:psd}
+\begin{algorithmic}[1]
+\REQUIRE trace $\mathcal{T}$, architecture $\mathcal{A}$, $N=30$M
+\ENSURE $\Theta$, $\beta$, $\beta_{\mathrm{lo}}$, $\beta_{\mathrm{hi}}$, class $\mathcal{C}$
+\STATE replay $\mathcal{T}$ for $N$ instructions on 1 core; $T_N \leftarrow \kappa(N)/f_{\mathrm{core}}$
+\STATE replay $\mathcal{T}$ for $2N$ instructions with a recorder on every channel; $T_{2N} \leftarrow \kappa(2N)/f_{\mathrm{core}}$
+\STATE $t \leftarrow$ sorted issue times of RD/WR/RDA/WRA over all channels, in ns
+\IF{$|t| / (\text{reads}+\text{writes served}) \notin [0.97, 1.01]$} \STATE \textbf{abort} (incomplete recording) \ENDIF
+\STATE $t \leftarrow \{t_j : T_N \le t_j \le T_{2N}\}$ \hfill instructions $N..2N$
+\STATE $x_j \leftarrow t_{j+1}-t_j$; \ $\Theta \leftarrow 64|t|/(T_{2N}-T_N)$ \hfill Eq.~\eqref{eq:theta}
+\STATE $(f,\hat S) \leftarrow$ Welch PSD of $x$ \hfill Eq.~\eqref{eq:welch}
+\STATE average $\hat S$ into 32 log-spaced bins
+\STATE fit $\beta$, $\beta_{\mathrm{lo}}$, $\beta_{\mathrm{hi}}$ by least squares in log-log space
+\RETURN $\Theta$, $\beta$, $\mathcal{C}$ from Eq.~\eqref{eq:class}
+\end{algorithmic}
+\end{algorithm}
+
+%=====================================================================
+\section{Baselines and Experimental Setup}\label{sec:setup}
+%=====================================================================
+\subsection{Baselines}
+\begin{itemize}
+\item \textbf{GPU + HBM3} is the baseline of the AI study: speedups, throughput per chip and energy are normalized to it.
+\item \textbf{CPU + DDR5} is the baseline of the SPEC study: IPC is reported relative to it on the same core.
+\item \textbf{Pin-bandwidth roofline.} A datasheet roofline uses $B_d^{\mathrm{pin}}$ for every traffic class. Comparing it with the calibrated $B_d(p)$ isolates the effect of the access pattern.
+\item \textbf{Public token rates.} The two SRAM-only systems have two tuned parameters each (per-operator overhead and hop latency). Batch-1 Llama decode is compared with published token rates as an external reference.
+\item \textbf{FR-FCFS, open-row} scheduling~\cite{rixner2000} on every DRAM controller, so that differences come from the DRAM technology and channel organisation.
+\end{itemize}
+
+\subsection{Experimental Setup}
+Table~\ref{tab:setup} summarises the configuration. Ramulator~2.1 is built from source at commit \texttt{7bead6c}. The tracer uses clang/LLVM~23 with \texttt{-O2 -march=x86-64-v3}. The SPEC CPU~2026 v1.0.1 benchmarks run with their \texttt{refrate} inputs (first workload). These are measurement runs, not reportable SPEC results. Analysis uses Python~3.14 and NumPy. The framework has 15 unit tests that check:
+\begin{itemize}
+\item the parameter counts of the models (8.03B, 70.6B, 46.7B, 25.5M);
+\item that calibrated bandwidth never exceeds pin bandwidth;
+\item that a STREAM-triad kernel gives an instruction count within 1\% of the executed count;
+\item that LLC geometries are powers of two;
+\item that the PSD classifier labels white noise stationary ($\beta\approx0$) and $1/f$ noise monofractal ($\beta\approx1$);
+\item that step time equals the sum of its components.
+\end{itemize}
+
+\begin{table}[t]
+\caption{Replay and Characterization Configuration}
+\label{tab:setup}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.30\columnwidth}p{0.62\columnwidth}@{}}
+\toprule
+Parameter & Value\\
+\midrule
+Traces & 8 SPEC CPU 2026 rate benchmarks; 30B instr.\ skipped, 100M warm-up, 200M traced\\
+Private caches (tracer) & L1D 48\,KiB 12-way, L2 2\,MiB 16-way, 64\,B lines, LRU, write-back\\
+Core & SimpleO3, 4-wide, 128-entry window, 4\,GHz\\
+Shared LLC & architecture SRAM, power-of-two sets, 24, 25/16, 26, 18, 29, 16 ways (CPU, GPU HBM3/HBM4, mesh, NPU, LPU, wafer), 32 MSHRs/core; hit 56 (CPU), 480 (GPU), 240 (mesh), 160 (NPU), 120 (LPU), 800 (wafer) cycles\\
+LLC capacity & 96, 50/128, 208, 144, 232\,MiB, 1\,GiB$^\dagger$\\
+Controller & per channel; FR-FCFS, open row, MOP4CLXOR, refresh, 64-entry queues\\
+IPC study & instructions $N..2N$; 1 core ($N$=100M), 4 cores ($N$=10M/core)\\
+Pattern study & 1 core, $2\times30$M instr., instructions 30M--60M analysed; 5 DRAM systems\\
+\bottomrule
+\end{tabular}\\[2pt]
+\raggedright\scriptsize $^\dagger$The wafer's 44\,GiB SRAM is capped at a 1\,GiB LLC; no trace needs more. Set counts are powers of two, so capacities are rounded (e.g.\ 210$\rightarrow$208\,MiB).
+\end{table}
+
+%=====================================================================
+\section{Results and Performance Analysis}\label{sec:results}
+%=====================================================================
+\subsection{Achieved DRAM Bandwidth}
+Table~\ref{tab:calib} and Fig.~\ref{fig:calib} show the calibration. DDR5 keeps 86--93\% of pin bandwidth for every pattern: it has 32 banks per sub-channel relative to a modest data rate, so bank-level parallelism hides row misses. The fast interfaces do not. HBM3 and HBM4 stream at 99\% but keep only 58\% and 46\% on random 64\,B lines, LPDDR5 keeps 45\%, and GDDR6 keeps 24--25\% on random lines and rows, because 16 banks per channel cannot cover the row-cycle time at 14\,Gb/s. Against the pin-bandwidth roofline baseline, a datasheet model therefore overestimates GDDR6 gather bandwidth by about 4\tmx{} and HBM4 by about 2.2\tmx{}. For inference, weight streaming obtains 83--99\% of the pin rate, paged-KV gathers 48--73\% (DDR5 93\%) and embedding lookups 25--89\%.
+
+\begin{table}[t]
+\caption{Achieved DRAM Bandwidth in GB/s (\% of Pin), Ramulator 2.1}
+\label{tab:calib}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2.2pt}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+DRAM & Pin & Stream & RW 2:1 & KV page & Row 256B & Rand 64B\\
+\midrule
+DDR5 & 307 & 285 (93) & 271 (88) & 284 (93) & 274 (89) & 263 (86)\\
+HBM3 & 3,277 & 3,256 (99) & 2,900 (88) & 2,023 (62) & 1,934 (59) & 1,893 (58)\\
+HBM4 & 8,192 & 8,107 (99) & 7,247 (88) & 3,914 (48) & 3,784 (46) & 3,736 (46)\\
+GDDR6 & 448 & 372 (83) & 303 (68) & 216 (48) & 110 (25) & 108 (24)\\
+LPDDR5 & 205 & 198 (97) & 175 (85) & 150 (73) & 93 (45) & 92 (45)\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/02_dram_calibration.pdf}
+\caption{Achieved DRAM bandwidth as a fraction of pin bandwidth, by access pattern.}
+\label{fig:calib}
+\end{figure}
+
+\subsection{AI Inference}
+\textbf{Decode is a memory-streaming problem.} Table~\ref{tab:llama} and Fig.~\ref{fig:speedup} show that batch-1 step time follows achieved memory bandwidth. Relative to the HBM3 GPU, CPU/DDR5 runs at 0.10\tmx{}, the LPDDR5 NPU at 0.07\tmx{}, the GDDR6 mesh at 0.12\tmx{} and HBM4 at 2.2\tmx{}. The HBM3 GPU reaches 195 tokens/s, 91\% of its pin-bandwidth bound of 214 tokens/s (15.3\,GB of DRAM traffic per token over 3.28\,TB/s). The rest is per-operator overhead and KV gathers that run below stream efficiency. The SRAM-resident systems are 6.3--7.9\tmx{} faster on Llama-8B and 7.8--8.8\tmx{} on Llama-70B, because they read weights at tens of TB/s. They do so by spreading the model over 76 (8B) to 654 (70B) LPU-class chips or 1--4 wafers. Against public figures, the model gives 1,229 tokens/s for the LPU on Llama-8B (public: about 750, or 635--850), 385 on Llama-70B (about 250), and 1,536 and 341 for the wafer (about 1,800 and 450). These are 0.76--1.9\tmx{} the published rates, which themselves vary across software releases.
+
+\begin{table}[t]
+\caption{Llama-3.1-8B Decode, Batch 1, Context 2,048}
+\label{tab:llama}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{@{}lrrrrrl@{}}
+\toprule
+Architecture & Chips & Step ms & tok/s & tok/s/chip & vs GPU & Bound\\
+\midrule
+CPU + DDR5 & 1 & 53.9 & 18.6 & 18.6 & 0.10\tmx & memory\\
+GPU + HBM3 & 1 & 5.13 & 194.8 & 194.8 & 1.00\tmx & memory\\
+GPU + HBM4 & 1 & 2.31 & 432.9 & 432.9 & 2.22\tmx & memory\\
+Mesh + GDDR6 & 1 & 41.4 & 24.2 & 24.2 & 0.12\tmx & memory\\
+NPU + LPDDR5 & 1 & 77.0 & 13.0 & 13.0 & 0.07\tmx & memory\\
+LPU (SRAM) & 76 & 0.814 & 1,229 & 16.2 & 6.31\tmx & comm.\\
+Wafer (SRAM) & 1 & 0.651 & 1,536 & 1,536 & 7.89\tmx & overhead\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/03_ai_latency_speedup.pdf}
+\caption{Step-latency speedup over GPU + HBM3. Each system uses the minimum number of chips that holds the model state.}
+\label{fig:speedup}
+\end{figure}
+
+\textbf{Per chip, HBM wins.} Normalized per chip (Fig.~\ref{fig:perchip}), the LPU-class system delivers about 1/12 of an HBM3 GPU's tokens/s on Llama-8B and about 1/37 on Llama-70B. On the LLM scenarios only GPU + HBM4 (2.0--2.7\tmx) and the wafer, whose single ``chip'' holds 44\,GiB of SRAM, beat the HBM3 GPU per chip. Batching widens the gap. From batch 1 to 256, GPU throughput per chip grows about 32\tmx{} (Fig.~\ref{fig:batch}), while the SRAM systems must add chips to hold the growing KV cache.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/04_ai_per_chip.pdf}
+\caption{Throughput per chip relative to GPU + HBM3.}
+\label{fig:perchip}
+\end{figure}
+
+\textbf{The bottleneck moves rather than disappears} (Fig.~\ref{fig:breakdown}). For DRAM-based designs, 83--100\% of decode time is spent waiting on memory. For the LPU-class system, 68--79\% is all-reduce latency across hundreds of chips and the rest is per-operator synchronization; for the wafer, on-wafer synchronization dominates, except Llama-70B at batch 32 (5 wafers), where communication takes 64\%. Prefill (2,048 tokens) is compute-bound on every DRAM-based system and on a single wafer. The exceptions are multi-chip SRAM-only deployments (77 LPU-class chips for Llama-8B; 655 chips or 4 wafers for Llama-70B), where all-reduces of 2,048-token activations take 71--92\% of the time.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/06_time_breakdown.pdf}
+\caption{Where step time goes. DRAM systems are memory-bound in decode and compute-bound in prefill; SRAM-only systems are bound by inter-chip communication and per-operator synchronization.}
+\label{fig:breakdown}
+\end{figure*}
+
+\textbf{Capacity cliffs.} When the KV cache pushes the wafer system from one to two wafers, tensor-parallel communication appears. At batch 128 the step time jumps from 0.69 to 1.62\,ms and throughput per wafer drops 2.3\tmx{}. At 32k context it rises from 0.66 to 0.96\,ms and per-wafer throughput drops 2.9\tmx{}. HBM systems degrade smoothly. A 32k context at batch 8 makes the KV cache 34\,GB, larger than the weights, and raises the LPU chip count from 76 to 233.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/08_batch_sweep.pdf}
+\caption{Llama-3.1-8B decode throughput per chip as batch grows (2k context).}
+\label{fig:batch}
+\end{figure}
+
+\textbf{MoE and non-LLM workloads.} At batch 1, Mixtral reads about 26\,GB of its 93\,GB per token, so DRAM designs pay bandwidth only for active experts. SRAM-resident designs must still provision SRAM for all experts (432 LPU-class chips). ResNet-50 at batch 1 (51\,MB of weights) fits in every scratchpad, and every system lands within 0.7--1.3\tmx{} of the GPU. At batch 64 its activations no longer fit the NPU's 144\,MB SRAM, and the NPU falls to 0.08\tmx{}. DLRM is compute-bound on the HBM GPUs and gather-bound on GDDR6 and LPDDR5, whose 25\%/45\% row-gather efficiency costs them 2--4\tmx.
+
+\textbf{Energy.} Dynamic memory energy per token is 13--16\tmx{} lower on SRAM-resident systems than on the HBM3 GPU, because their SRAM costs 0.25--0.3\,pJ/bit against 3.9\,pJ/bit for HBM3. Counting link energy, the LPU-class system is still 11--14\tmx{} better at batch 1 but only 1.1--4\tmx{} better at batch 32. Once static power is counted ($E_{\mathrm{TDP}}$), a 76-chip LPU-class system uses 5.2\tmx{} the energy per Llama-8B token of an HBM3 GPU at batch 1 (16\tmx{} on Llama-70B), and the wafer 4.2\tmx{} (8.5\tmx). At batch 32 the HBM GPUs are the most efficient, at 0.17--0.20\,J/token against at least 0.31\,J for every other design.
+
+\subsection{General-Purpose Code (SPEC CPU 2026)}
+In the traced 200M-instruction windows, seven of the eight benchmarks touch 3--274\,MiB and make 0.2--2 DRAM accesses per thousand instructions on the 1-core CPU baseline (up to 3.8 with 4 cores). Only lbm (a 542\,MiB lattice sweep, 43 APKI on 1 core and 101 on 4) is bandwidth-heavy. For the other seven, DRAM traffic is identical on all seven memory systems, with one exception (4-core nest on the 50\,MiB LLC of GPU + HBM3, 3.2 instead of 2.7 APKI), because their hot working sets fit in every LLC. What differs is the LLC hit latency, and IPC tracks it (Table~\ref{tab:spec}).
+
+\begin{table}[t]
+\caption{IPC Relative to CPU + DDR5 (1 Core) and Geomeans}
+\label{tab:spec}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2.6pt}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+Benchmark & CPU IPC & HBM3 & HBM4 & Mesh & NPU & LPU & Wafer\\
+\midrule
+stockfish & 3.20 & 0.66 & 0.66 & 0.81 & 0.87 & 0.92 & 0.52\\
+sqlite & 3.38 & 0.49 & 0.49 & 0.69 & 0.79 & 0.87 & 0.36\\
+omnetpp & 3.22 & 0.28 & 0.28 & 0.47 & 0.61 & 0.71 & 0.18\\
+sealcrypto & 3.09 & 0.36 & 0.36 & 0.56 & 0.70 & 0.81 & 0.25\\
+nest & 1.86 & 0.23 & 0.23 & 0.41 & 0.56 & 0.71 & 0.15\\
+marian & 3.48 & 0.84 & 0.84 & 0.94 & 0.97 & 1.00 & 0.73\\
+zstd & 2.80 & 0.47 & 0.47 & 0.66 & 0.77 & 0.88 & 0.33\\
+lbm & 1.58 & 0.48 & 0.48 & 0.64 & 0.67 & 0.78 & 0.36\\
+\midrule
+Geomean, 1 core & -- & 0.44 & 0.44 & 0.63 & 0.73 & 0.83 & 0.32\\
+Geomean, 4 cores & -- & 0.53 & 0.52 & 0.71 & 0.70 & 0.83 & 0.39\\
+\midrule
+LLC hit (cycles) & 56 & 480 & 480 & 240 & 160 & 120 & 800\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Latency, not bandwidth, decides general-purpose code.} SPEC-style code issues dependent, irregular accesses with little memory-level parallelism. An SRAM 120--200\,ns away costs 2--7\tmx{} IPC on pointer-chasing codes (omnetpp 0.28\tmx/0.18\tmx{} and nest 0.23\tmx/0.15\tmx{} on the GPU and the wafer, 1 core), even though the SRAM never misses. Compute-dense codes with small hot sets (marian, stockfish) lose least, 0.5--1.0\tmx.
+
+\textbf{HBM bandwidth buys nothing here.} GPU + HBM4 has 2.5\tmx{} the DRAM bandwidth and 2.5\tmx{} the LLC of GPU + HBM3. Yet its IPC is within 1\% on every benchmark except 4-core lbm, where it is 10\% slower, because HBM4's lower random-access efficiency raises its loaded latency. Even on 4-core lbm the HBM GPUs use only 61--67\,GB/s of their 3--8\,TB/s, because 4-wide cores with 32 MSHRs each cannot generate enough parallel misses. Loaded DRAM read latency is similar on HBM (35--50\,ns) and DDR5 (28--73\,ns), so the GPUs' IPC deficit comes from the 120\,ns L2 hit latency, not from DRAM.
+
+\textbf{Capacity helps only the bandwidth-heavy benchmark.} On 4-core lbm, the 208--232\,MiB LLCs of the mesh and LPU cut DRAM accesses from 101 to 32--36 APKI and recover 0.81--0.87\tmx{} of CPU IPC. The NPU's 144\,MiB does not hold the working set, so the full stream goes to LPDDR5. Its loaded read latency reaches 126\,ns (60\,ns on DDR5), and IPC falls to 0.45\tmx. The ranking mirrors the AI ranking: the memory systems that win AI decode are the worst for general-purpose code. The LPU-class design's short SRAM latency (30\,ns) makes it the least affected AI chip, at 0.83\tmx.
+
+\subsection{Memory Access-Pattern Characterization}
+\textbf{Trace level.} Fig.~\ref{fig:spatial} and Table~\ref{tab:pattern} show the L2-miss traces, which are the same for every architecture. They fall into four families.
+\begin{itemize}
+\item \emph{Streams.} marian reads its weights as one sequential stream (99\% stream share, no re-references), with one miss every $\approx$6,700 instructions and the most regular interval (CV 0.6). sealcrypto is 100\% streams, in short bursts separated by long compute phases (CV 30).
+\item \emph{Interleaved streams.} lbm sweeps its lattice with three streams about 12\,MiB apart. Consecutive misses alternate between the streams, so no miss is to the next line, yet 70\% fall in the same 4\,KiB page as the previous one. At 58 MPKI and a median gap of one instruction, it is the only bandwidth-bound trace.
+\item \emph{Scattered reuse.} omnetpp touches 17\,MiB at random (89\% re-referenced). nest alternates dense and streaming phases (73\% re-referenced).
+\item \emph{Sweep plus scatter.} stockfish sweeps 170\,MiB while hitting a hash table (6\% re-referenced). sqlite repeatedly sweeps its database (67\%), and zstd slides a match window (49\% stream, 47\% re-referenced).
+\end{itemize}
+The re-referenced misses are LLC hits on every architecture, which explains why DRAM traffic is nearly identical across them.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/12_access_spatial.pdf}
+\caption{Address of every L2 miss over the 200M-instruction trace window (6,000 evenly spaced samples; first-touch physical addresses).}
+\label{fig:spatial}
+\end{figure*}
+
+\begin{table}[t]
+\caption{Trace-Level Access-Pattern Metrics (L2 Misses)}
+\label{tab:pattern}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2.2pt}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+Benchmark & MPKI & Mean/med.\ gap & CV & Next & Page & Stream & Re-ref\\
+\midrule
+stockfish & 0.39 & 2,556 / 2,132 & 1.1 & 12\% & 3\% & 14\% & 6\%\\
+sqlite & 2.34 & 428 / 39 & 3.5 & 30\% & 35\% & 43\% & 67\%\\
+omnetpp & 5.47 & 183 / 32 & 2.3 & 17\% & 38\% & 27\% & 89\%\\
+sealcrypto & 2.63 & 381 / 46 & 29.9 & 80\% & 0\% & 100\% & 55\%\\
+nest & 11.47 & 87 / 37 & 1.9 & 19\% & 35\% & 32\% & 73\%\\
+marian & 0.15 & 6,667 / 9,168 & 0.6 & 85\% & 0\% & 99\% & 0\%\\
+zstd & 1.19 & 841 / 443 & 3.2 & 25\% & 1\% & 49\% & 47\%\\
+lbm & 57.89 & 17 / 1 & 5.9 & 0\% & 70\% & 20\% & 48\%\\
+\bottomrule
+\end{tabular}\\[2pt]
+\raggedright\scriptsize Gap in instructions between misses. Next = next 64\,B line; Page = other line in the same 4\,KiB page; Stream = $\sigma$ (Eq.~\eqref{eq:sigma}); Re-ref = $\rho$ (Eq.~\eqref{eq:rho}).
+\end{table}
+
+\textbf{At the memory controllers.} Fig.~\ref{fig:ipat} plots the time between consecutive column commands for the first 1,000 requests of the warm window, the analogue of the inter-packet arrival plots in~\cite{agarwal2025}. Each benchmark keeps a recognisable timing signature. marian issues requests at a few discrete spacings (about 160, 600 and 800\,ns). nest is a tight band at about 60\,ns on DDR5 and 170\,ns on HBM3. lbm's requests arrive in bursts that spread over several channels in the same controller cycle. On the GPU every band shifts upwards, because each miss first pays the 120\,ns L2 hit latency.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/13_mc_interarrival.pdf}
+\caption{Time between consecutive DRAM column commands at the memory controllers, first 1,000 requests of the warm window, CPU + DDR5 against GPU + HBM3 (symmetric-log axis; 0 means issued in the same controller cycle on another channel).}
+\label{fig:ipat}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/14_mc_psd.pdf}
+\caption{Log-log PSD of the inter-request time series at the memory controllers, per benchmark and DRAM-backed architecture. GPU + HBM3 and GPU + HBM4 overlap on most panels.}
+\label{fig:psd}
+\end{figure*}
+
+Table~\ref{tab:mc} gives the average controller throughput $\Theta$ and the PSD slope and class, the analogue of the throughput table of~\cite{agarwal2025}. Fig.~\ref{fig:psd} shows the spectra.
+
+\begin{table*}[t]
+\caption{Memory-Controller Throughput $\Theta$ (GB/s) and PSD Slope $\beta$ with Class (S = Stationary, M = Monofractal, MF = Multifractal, AP = Anti-Persistent)}
+\label{tab:mc}
+\centering
+\footnotesize
+\begin{tabular}{@{}lrrrrrcrrrrr@{}}
+\toprule
+ & \multicolumn{5}{c}{Throughput $\Theta$ (GB/s)} & & \multicolumn{5}{c}{$\beta$ (class)}\\
+\cmidrule{2-6}\cmidrule{8-12}
+Benchmark & DDR5 & HBM3 & HBM4 & GDDR6 & LPDDR5 & & DDR5 & HBM3 & HBM4 & GDDR6 & LPDDR5\\
+\midrule
+stockfish & 0.44 & 0.31 & 0.31 & 0.37 & 0.39 & & 0.27 M & 0.27 S & 0.27 S & 0.30 M & 0.31 M\\
+sqlite & 0.61 & 0.32 & 0.32 & 0.43 & 0.49 & & 0.31 MF & 0.34 M & 0.34 M & 0.32 M & 0.33 M\\
+omnetpp & 0.45 & 0.12 & 0.12 & 0.21 & 0.27 & & 0.18 S & 0.18 S & 0.18 S & 0.18 S & 0.20 M\\
+sealcrypto & 0.86 & 0.35 & 0.35 & 0.51 & 0.60 & & 0.09 S & 0.05 S & 0.05 S & 0.09 S & 0.10 S\\
+nest & 1.95 & 0.61 & 0.60 & 0.98 & 1.17 & & 0.37 MF & 0.12 MF & 0.10 MF & 0.17 MF & 0.42 MF\\
+marian & 0.13 & 0.11 & 0.11 & 0.12 & 0.12 & & 1.04 MF & 1.08 MF & 0.98 MF & 0.97 MF & 1.37 MF\\
+zstd & 0.45 & 0.21 & 0.21 & 0.30 & 0.34 & & 0.53 M & 0.54 MF & 0.54 MF & 0.54 M & 0.55 M\\
+lbm & 15.95 & 8.42 & 5.96 & 8.21 & 8.26 & & $-$0.43 AP & $-$0.20 S & $-$0.19 S & $-$0.28 S & $-$0.09 S\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\textbf{The program, not the memory system, sets the shape of the request stream.} For five of the eight benchmarks, $\beta$ varies by at most 0.05 across the five memory systems. In 33 of the 40 benchmark--system pairs, the class is the benchmark's majority class, and the exceptions lie close to a class boundary. This differs from the NoC study~\cite{agarwal2025}, where buffer and LLC sizes changed the PSD class. Here every hot set fits in every LLC, so the memory system only rescales the timing. Three predictability levels emerge:
+\begin{itemize}
+\item \emph{Stationary:} sealcrypto and omnetpp on every system, and lbm on the AI memory systems.
+\item \emph{Monofractal:} stockfish, sqlite and zstd, with phase behaviour at one scale.
+\item \emph{Multifractal:} marian and nest. marian's spectrum falls as $1/f^2$ at low frequency, from layer-by-layer weight phases, and has sharp peaks at multiples of 0.1 cycles/request, a period of about 10 requests. nest switches between dense and streaming phases.
+\end{itemize}
+lbm on CPU + DDR5 is anti-persistent ($\beta=-0.43$): DDR5 serves it fast enough that back-to-back bursts and gaps alternate.
+
+\textbf{Throughput follows the core, not the DRAM.} Controller throughput is highest on CPU + DDR5 for every benchmark (0.13--16\,GB/s) and 1.2--3.8\tmx{} lower on the GPUs. Every system serves the same requests per instruction, so throughput scales with IPC, which the LLC latency sets. Even lbm draws only 6--8\,GB/s from HBM systems that have terabytes per second of peak bandwidth. The only large gap between the two GPUs is lbm, at 8.42 against 5.96\,GB/s. Over 20M instructions both issue exactly 784,178 reads. The 50\,MiB LLC of GPU + HBM3 also evicts 85,138 dirty lattice lines, while the 128\,MiB LLC of GPU + HBM4 holds them all. The difference therefore comes from LLC capacity, not from the DRAM.
+
+\textbf{Row-buffer locality needs both a spatial pattern and few channels} (Fig.~\ref{fig:locality}). Only sealcrypto (80\% next line) and lbm (70\% same page) produce many row hits. Their hit rates rise as the channel count falls:
+\begin{itemize}
+\item HBM4 (128 channels): 2--17\%;
+\item HBM3 (64 channels): 7--30\%;
+\item DDR5 (16 channels): 22--55\%;
+\item LPDDR5 (8 channels): 27--73\%;
+\item the 2-channel host DDR5 of the SRAM-only designs: up to 71--82\%.
+\end{itemize}
+Cache-line interleaving spreads a stream over every channel, so on a wide memory system each row sees only a few lines before refresh or another stream closes it. marian's perfect stream gets almost no row hits: it misses once every $\approx$6,700 instructions, so each channel sees its next line microseconds later, after a refresh has closed the row. Wide AI memory systems therefore turn even sequential CPU-style streams into row misses. This is the same effect behind the low random-access efficiency of HBM and GDDR6 in Table~\ref{tab:calib}.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/15_locality.pdf}
+\caption{Left: distance of each L2 miss to the previous one (trace level). Right: DRAM row-buffer hit rate in the warm 1-core replays (100M instructions); the SRAM-only designs reach only a 2-channel DDR5 host memory.}
+\label{fig:locality}
+\end{figure*}
+
+\subsection{Validation and Limitations}
+The calibrated bandwidth never exceeds pin bandwidth. Every controller-level replay records 100\% of the requests Ramulator served. A first attempt that wrote command traces to a RAM-backed file system lost commands silently when the space filled; it was discarded and re-run with the completeness check of Algorithm~\ref{alg:psd}.
+
+The study has the following limitations:
+\begin{itemize}
+\item Architecture parameters are public-specification class values.
+\item The AI model is analytical on top of cycle-accurate DRAM. It does not model on-chip network contention or overlap between consecutive operators.
+\item All weights are 16-bit.
+\item Each SPEC benchmark contributes one 200M-instruction window, counted in LLVM IR instructions.
+\item SimpleO3 has no prefetcher.
+\item The AI chips' SRAM latencies as seen from a CPU core are assumptions (30--200\,ns), and the SPEC IPC ratios scale directly with them.
+\end{itemize}
+
+%=====================================================================
+\section{Conclusion}\label{sec:conclusion}
+%=====================================================================
+We evaluated seven memory-system archetypes of AI inference chips on inference and on general-purpose code with one cycle-accurate DRAM substrate. Five conclusions follow.
+\begin{enumerate}
+\item Decode is a memory-bandwidth problem and prefill a compute problem. On every DRAM-based design, 83--100\% of batch-1 decode time is spent waiting for memory, and speed tracks \emph{achieved}, not pin, bandwidth.
+\item SRAM-only designs buy latency with chips. On batch-1 Llama decode they give 6.3--8.8\tmx{} lower latency than an HBM3 GPU, but they need 76--654 LPU-class chips or 1--4 wafers. The LPU-class design delivers 1/12--1/37 of the GPU's throughput per chip and uses 5--16\tmx{} its energy per token once static power counts.
+\item Access pattern matters as much as peak bandwidth. HBM keeps only 46--58\%, LPDDR5 45\% and GDDR6 24\% of its bandwidth on random 64\,B accesses.
+\item On SPEC CPU~2026, IPC follows LLC hit latency. The geometric mean ranges from 0.83\tmx{} (LPU) to 0.32\tmx{} (wafer) of a CPU with DDR5, and HBM4 is no better than HBM3.
+\item The PSD class of the controller request stream is set by the program; the memory system only rescales its timing. Wide memory systems turn even sequential streams into row misses.
+\end{enumerate}
+HBM-based GPUs remain the most balanced choice. Future work includes quantized weights, a prefetching core, and closing the loop by using the PSD class to guide controller scheduling.
+
+\section*{Acknowledgment}
+The authors thank the Indian Institute of Information Technology Dharwad for its support.
+
+%=====================================================================
+\begin{thebibliography}{00}
+\bibitem{wulf1995} W. A. Wulf and S. A. McKee, ``Hitting the memory wall: Implications of the obvious,'' \emph{ACM SIGARCH Comput. Archit. News}, vol. 23, no. 1, pp. 20--24, Mar. 1995.
+\bibitem{gholami2024} A. Gholami, Z. Yao, S. Kim, C. Hooper, M. W. Mahoney, and K. Keutzer, ``AI and memory wall,'' \emph{IEEE Micro}, vol. 44, no. 3, pp. 33--39, 2024.
+\bibitem{choquette2023} J. Choquette, ``NVIDIA Hopper H100 GPU: Scaling performance,'' \emph{IEEE Micro}, vol. 43, no. 3, pp. 9--17, 2023.
+\bibitem{vasiljevic2021} J. Vasiljevic \emph{et al.}, ``Compute substrate for Software 2.0,'' \emph{IEEE Micro}, vol. 41, no. 2, pp. 50--55, 2021.
+\bibitem{abts2020} D. Abts \emph{et al.}, ``Think fast: A tensor streaming processor (TSP) for accelerating deep learning workloads,'' in \emph{Proc. ACM/IEEE 47th Annu. Int. Symp. Comput. Archit. (ISCA)}, 2020, pp. 145--158.
+\bibitem{lie2023} S. Lie, ``Cerebras architecture deep dive: First look inside the hardware/software co-design for deep learning,'' \emph{IEEE Micro}, vol. 43, no. 3, pp. 18--30, 2023.
+\bibitem{agarwal2025} S. Agarwal, K. Goel, M. Sinha, and S. Deb, ``Towards improving memory access in large-scale NoC-based systems,'' in \emph{Proc. IEEE Int. Symp. Circuits Syst. (ISCAS)}, 2025, pp. 1--5, doi: 10.1109/ISCAS56072.2025.11043968.
+\bibitem{luo2024} H. Luo, Y. C. Tu\u{g}rul, F. N. Bostanc{\i}, A. Olgun, A. G. Ya\u{g}l{\i}k\c{c}{\i}, and O. Mutlu, ``Ramulator 2.0: A modern, modular, and extensible DRAM simulator,'' \emph{IEEE Comput. Archit. Lett.}, vol. 23, no. 1, pp. 112--116, 2024.
+\bibitem{pope2023} R. Pope \emph{et al.}, ``Efficiently scaling transformer inference,'' in \emph{Proc. Mach. Learn. Syst. (MLSys)}, vol. 5, 2023.
+\bibitem{kwon2023} W. Kwon \emph{et al.}, ``Efficient memory management for large language model serving with PagedAttention,'' in \emph{Proc. 29th ACM Symp. Operating Syst. Princ. (SOSP)}, 2023, pp. 611--626.
+\bibitem{williams2009} S. Williams, A. Waterman, and D. Patterson, ``Roofline: An insightful visual performance model for multicore architectures,'' \emph{Commun. ACM}, vol. 52, no. 4, pp. 65--76, 2009.
+\bibitem{jouppi2017} N. P. Jouppi \emph{et al.}, ``In-datacenter performance analysis of a tensor processing unit,'' in \emph{Proc. 44th Annu. Int. Symp. Comput. Archit. (ISCA)}, 2017, pp. 1--12.
+\bibitem{kim2016} Y. Kim, W. Yang, and O. Mutlu, ``Ramulator: A fast and extensible DRAM simulator,'' \emph{IEEE Comput. Archit. Lett.}, vol. 15, no. 1, pp. 45--49, 2016.
+\bibitem{rixner2000} S. Rixner, W. J. Dally, U. J. Kapasi, P. Mattson, and J. D. Owens, ``Memory access scheduling,'' in \emph{Proc. 27th Annu. Int. Symp. Comput. Archit. (ISCA)}, 2000, pp. 128--138.
+\bibitem{ghose2019} S. Ghose \emph{et al.}, ``Demystifying complex workload--DRAM interactions: An experimental study,'' \emph{Proc. ACM Meas. Anal. Comput. Syst.}, vol. 3, no. 3, pp. 1--50, 2019.
+\bibitem{pentecost2022} L. Pentecost, A. Hankin, M. Donato, M. Hempstead, G.-Y. Wei, and D. Brooks, ``NVMExplorer: A framework for cross-stack comparisons of embedded non-volatile memories,'' in \emph{Proc. IEEE Int. Symp. High-Perform. Comput. Archit. (HPCA)}, 2022, pp. 938--956.
+\bibitem{luk2005} C.-K. Luk \emph{et al.}, ``Pin: Building customized program analysis tools with dynamic instrumentation,'' in \emph{Proc. ACM SIGPLAN Conf. Program. Lang. Des. Implement. (PLDI)}, 2005, pp. 190--200.
+\bibitem{jaleel2007} A. Jaleel, ``Memory characterization of workloads using instrumentation-driven simulation: A Pin-based memory characterization of the SPEC CPU2000 and SPEC CPU2006 benchmark suites,'' Intel Corp., VSSAD, Tech. Rep., 2007.
+\bibitem{limaye2018} A. Limaye and T. Adegbija, ``A workload characterization of the SPEC CPU2017 benchmark suite,'' in \emph{Proc. IEEE Int. Symp. Perform. Anal. Syst. Softw. (ISPASS)}, 2018, pp. 149--158.
+\bibitem{oliveira2021} G. F. Oliveira \emph{et al.}, ``DAMOV: A new methodology and benchmark suite for evaluating data movement bottlenecks,'' \emph{IEEE Access}, vol. 9, pp. 134457--134502, 2021.
+\bibitem{lattner2004} C. Lattner and V. Adve, ``LLVM: A compilation framework for lifelong program analysis \& transformation,'' in \emph{Proc. Int. Symp. Code Gener. Optim. (CGO)}, 2004, pp. 75--86.
+\bibitem{bogdan2010} P. Bogdan, M. Kas, R. Marculescu, and O. Mutlu, ``QuaLe: A quantum-leap inspired model for non-stationary analysis of NoC traffic in chip multi-processors,'' in \emph{Proc. 4th ACM/IEEE Int. Symp. Networks-on-Chip (NOCS)}, 2010, pp. 241--248.
+\bibitem{kim2010} Y. Kim, D. Han, O. Mutlu, and M. Harchol-Balter, ``ATLAS: A scalable and high-performance scheduling algorithm for multiple memory controllers,'' in \emph{Proc. 16th IEEE Int. Symp. High-Perform. Comput. Archit. (HPCA)}, 2010, pp. 1--12.
+\bibitem{llama3} A. Grattafiori \emph{et al.}, ``The Llama 3 herd of models,'' arXiv:2407.21783, 2024.
+\bibitem{jiang2024} A. Q. Jiang \emph{et al.}, ``Mixtral of experts,'' arXiv:2401.04088, 2024.
+\bibitem{he2016} K. He, X. Zhang, S. Ren, and J. Sun, ``Deep residual learning for image recognition,'' in \emph{Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR)}, 2016, pp. 770--778.
+\bibitem{naumov2019} M. Naumov \emph{et al.}, ``Deep learning recommendation model for personalization and recommendation systems,'' arXiv:1906.00091, 2019.
+\bibitem{wang2021} R. Wang \emph{et al.}, ``DCN V2: Improved deep \& cross network and practical lessons for web-scale learning to rank systems,'' in \emph{Proc. Web Conf. (WWW)}, 2021, pp. 1785--1797.
+\bibitem{spec2026} Standard Performance Evaluation Corporation, ``SPEC CPU 2026,'' v1.0.1. [Online]. Available: \url{https://www.spec.org/}
+\bibitem{welch1967} P. D. Welch, ``The use of fast Fourier transform for the estimation of power spectra: A method based on time averaging over short, modified periodograms,'' \emph{IEEE Trans. Audio Electroacoust.}, vol. AU-15, no. 2, pp. 70--73, Jun. 1967.
+\end{thebibliography}
+
+\end{document}

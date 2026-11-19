@@ -4,7 +4,7 @@ memory architecture.
 For each operator on each chip:
 
     t_op = max(t_compute, t_memory) + t_comm + overhead
-    t_compute = FLOPs_chip / (peak * efficiency)
+    t_compute = FLOPs_chip / (peak * efficiency)   (vector ops: 0.5 x vector peak)
     t_memory  = max(bytes_sram / BW_sram, sum_class bytes_dram[class] / BW_dram[pattern(class)])
 
 SRAM and DRAM are separate paths and overlap. DRAM bandwidth per traffic class
@@ -13,9 +13,11 @@ architecture's DRAM configuration, so row-buffer locality, bank conflicts,
 refresh and controller queueing are reflected.
 
 Placement depends on the SRAM role:
-  cache      - hardware LRU cache: activations hit; persistent state (weights,
-               KV, tables) hits only if the whole per-chip set fits, because a
-               cyclic stream larger than an LRU cache misses on every access.
+  cache      - hardware LRU cache, all-or-nothing: persistent state (weights,
+               KV, tables) hits only if persistent + activation bytes per chip
+               fit in 80% of the usable SRAM, because a cyclic stream larger
+               than an LRU cache misses on every access; activations hit if
+               they fit in 50% of the usable SRAM.
   scratchpad - compiler-managed: activations pinned first, then as much
                persistent state as fits; the rest streams from DRAM.
   resident   - SRAM is the only memory; chips are added until state fits.

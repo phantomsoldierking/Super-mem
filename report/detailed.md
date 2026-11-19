@@ -64,8 +64,8 @@ The **role** of the on-chip SRAM is the key architectural distinction:
 
 ### 3.1 Ramulator 2.1 (cycle-accurate DRAM)
 
-Ramulator 2.1 is the checked-out simulator in `ramulator2/` (prebuilt `libramulator.so` and Python 3.14
-bindings). The new backend (`memarch/ramulator_backend.py`) uses only Ramulator's C++ simulation loop
+Ramulator 2.1 is the simulator submodule in `ramulator2/` (pinned at 7bead6c; `libramulator.so` and the Python 3.14
+bindings are built from source by `make ramulator`). The new backend (`memarch/ramulator_backend.py`) uses only Ramulator's C++ simulation loop
 (`ramulator.Simulation`), never Python-level ticking, which makes it ~1000x faster than the prototype.
 
 For each architecture it builds one controller per channel: FR-FCFS scheduler, open-row policy, refresh on,
@@ -112,7 +112,7 @@ bandwidth:
 
 Models: Llama-3.1-8B and 70B (GQA, SwiGLU), Mixtral-8x7B (top-2 of 8 experts; the expected number of
 distinct experts for *n* tokens is `E(1-(1-k/E)^n)`), ResNet-50 enumerated layer by layer, and a
-DLRM-DCNv2-shaped recommender (26 tables, 250M rows of 128 fp16 values = 64 GB, 10 lookups per table).
+DLRM-DCNv2-shaped recommender (26 tables holding 250M rows in total of 128 fp16 values = 64 GB, 10 lookups per table).
 Unit tests check parameter counts against the published models (8.03B, 70.6B, 46.7B, 25.5M; ResNet-50
 8.2 GFLOP/image).
 
@@ -134,7 +134,7 @@ were tuned, so that Llama batch-1 decode lands near public token rates:
 
 {{public_check}}
 
-The model is within about 1.6x of these public figures (which themselves vary across software releases and
+The model gives 0.76–1.9x these public figures (which themselves vary across software releases and
 quantization choices). The HBM GPU reaches {{gpu_bound_pct}} of its pin-bandwidth bound (all DRAM bytes per token
 over pin bandwidth); the rest is per-operator launch overhead and the KV-cache gathers, which run below
 stream efficiency.
@@ -167,9 +167,10 @@ The supplied `cpu2026-1.0.1.iso` is SPEC CPU 2026 v1.0.1. Steps (all scripted in
 ### 3.4 The LLVM pass and tracer runtime
 
 `tracer/MemTracePass.cpp` is a new-pass-manager plugin registered at `OptimizerLastEP`, so it instruments
-the *optimized* code (register-allocated values do not appear as memory accesses). For every basic block it
-inserts `__mt_bb(n)` with the block's instruction count, and before every memory operation a call with the
-pointer and access size:
+the *optimized* code (values promoted to SSA registers do not appear as memory accesses). For every basic block it
+inserts `__mt_bb(n)` with the block's instruction count, and before every load, store, atomic and memory
+intrinsic a call with the pointer and access size (masked vector loads/stores and gathers, and code in
+uninstrumented libraries such as libc, are not traced):
 
 ```cpp
 if (auto *L = dyn_cast<LoadInst>(I))       IRB.CreateCall(LD, {L->getPointerOperand(), Size(L->getType())});
@@ -200,9 +201,11 @@ into L2 were dropped; they are now queued and attached to the next miss line.
 `memarch/cpu_study.py` replays each trace with Ramulator's **SimpleO3** frontend: a 4-wide out-of-order core
 with a 128-entry window at 4 GHz and a shared LLC with 32 MSHRs per core. The core is identical for all
 architectures; the LLC takes the architecture's on-chip SRAM capacity and latency and the DRAM is the
-architecture's Ramulator DRAM (SRAM-only chips get a small DDR5 host memory for spills). Because Ramulator
-replays a trace cyclically, every point is simulated for N and 2N instructions and the difference is
-reported, so the LLC is warm. Single-core runs use N = 100M; 4-core "rate" runs give each core its own copy
+architecture's Ramulator DRAM (SRAM-only chips get a small DDR5 host memory for spills). Every point is
+simulated for N and 2N instructions and the difference is reported, i.e. instructions N..2N with the LLC
+warmed by the first N. Each trace holds 200M instructions, so with N = 100M the measured part is the second
+half of the trace window, not a second pass over the same instructions (Ramulator would only wrap around if 2N
+exceeded the trace). Single-core runs use N = 100M; 4-core "rate" runs give each core its own copy
 of the trace in a disjoint address range and use N = 10M per core. The full replay configuration:
 
 {{replay_config}}
@@ -222,14 +225,16 @@ of Agarwal et al. (ISCAS 2025, "Towards Improving Memory Access in Large-Scale N
   *stream share*, i.e. misses that are the next line after any of the previous 16 misses (what a 16-stream
   prefetcher would catch, even when streams interleave); the re-reference share (misses to a line already
   missed in the window); and the interval between misses in instructions.
-* **Memory-controller level** (per architecture): a warm single-core replay (2 x 30M instructions, second half
-  analysed) of each trace on each of the five DRAM-backed systems, with Ramulator's `CmdTraceRecorder` plugin
+* **Memory-controller level** (per architecture): a single-core replay of 2 x 30M instructions, of which
+  instructions 30M–60M are analysed (the window starts at the cycle where an identical 30M-instruction run
+  ends, so the LLC is warm and every architecture covers the same instructions) of each trace on each of the five DRAM-backed systems, with Ramulator's `CmdTraceRecorder` plugin
   on every channel controller. The RD/WR column commands of all channels are merged into one time series, and
   the time between consecutive commands is the *inter-request time* at the memory controllers. The plugin sees
   commands when they are issued, so this is the service-side counterpart of the paper's inter-packet arrival
-  time. Its power spectral density S(f) is estimated with Welch's method (Hann window, 50% overlap; frequency in
+  time. Its power spectral density S(f) is estimated with Welch's method (periodic Hann window, 50% overlap; frequency in
   cycles per request) and summarised by the log-log slope β of S(f) ∝ 1/f<sup>β</sup>, fitted on 32 log-spaced bins.
-  As in the paper, a flat spectrum (β < 0.3 over the whole range) is called **stationary** (predictable
+  The paper defines the classes qualitatively; the thresholds here are ours. A flat spectrum (|β| < 0.3, and both
+  half-range slopes within ±0.4) is called **stationary** (predictable
   request flow), a single straight 1/f<sup>β</sup> line **monofractal**, and a spectrum whose low- and high-frequency
   halves have slopes differing by ≥ 0.5 **multifractal** (several scaling regimes, least predictable). Negative
   β means power rising with frequency: requests alternate between short and long gaps (anti-persistent).
@@ -239,7 +244,7 @@ of Agarwal et al. (ISCAS 2025, "Towards Improving Memory Access in Large-Scale N
 * **Model sizes and FLOPs** match the published models (unit tests).
 * **Bandwidth physics**: calibrated bandwidth never exceeds pin bandwidth; random < stream for every DRAM
   (unit test on LPDDR5); GPU batch-1 Llama-8B throughput is {{gpu_bound_pct}} of the pin-bandwidth bound.
-* **Public token rates** for SRAM-only systems within ~1.6x (table above).
+* **Public token rates** for SRAM-only systems within 0.76–1.9x (table above).
 * **Tracer**: a STREAM-triad kernel produces ≥90% L2 misses per L1 miss, non-zero dirty write-backs, and
   an instruction total within 1% of the executed count (test).
 * **Replay**: SimpleO3 LLC geometry is power-of-two for all architectures (test); every result's DRAM
@@ -273,7 +278,7 @@ of Agarwal et al. (ISCAS 2025, "Towards Improving Memory Access in Large-Scale N
 
 **Decode is a memory-streaming problem.** At batch 1, every generated token reads all weights and the
 KV cache once. Time follows achieved memory bandwidth: CPU/DDR5 0.10x, LPDDR5 NPU 0.07x, GDDR6 mesh 0.12x
-and HBM4 2.2x of the HBM3 GPU. The SRAM-resident systems are 6–8x faster for Llama-8B and 8–9x for
+and HBM4 2.2x of the HBM3 GPU. The SRAM-resident systems are 6.3–7.9x faster for Llama-8B and 7.8–8.8x for
 Llama-70B because they read weights at tens of TB/s — but they get there by spreading the model over
 76 (8B) to 654 (70B) LPU-class chips or 1–4 wafers.
 
@@ -282,7 +287,7 @@ Llama-70B because they read weights at tens of TB/s — but they get there by sp
 {{fig:04_ai_per_chip|Figure 5. Throughput per chip relative to GPU + HBM3.}}
 
 **Per chip, HBM wins.** Normalized per chip, the LPU-class system delivers about a twelfth of an HBM3 GPU's
-tokens/s on Llama-8B and about a thirty-seventh on Llama-70B; on the LLM scenarios only GPU + HBM4 (2.0–2.7x) and the wafer, whose single "chip" holds 44 GB of
+tokens/s on Llama-8B and about a thirty-seventh on Llama-70B; on the LLM scenarios only GPU + HBM4 (2.0–2.7x) and the wafer, whose single "chip" holds 44 GiB of
 SRAM, beat it per chip. Batching widens the gap: Figure 7 shows GPU throughput per chip growing ~32x from
 batch 1 to 256, while the SRAM systems must add chips to hold the growing KV cache.
 
@@ -290,7 +295,8 @@ batch 1 to 256, while the SRAM systems must add chips to hold the growing KV cac
 
 **The bottleneck moves rather than disappears.** For DRAM-based designs, 83–100% of decode time is spent
 waiting on memory. For the LPU-class system, 68–79% of the time is all-reduce latency across hundreds of
-chips and the rest per-operator synchronization; for the wafer, on-wafer synchronization dominates. Prefill
+chips and the rest per-operator synchronization; for the wafer, on-wafer synchronization dominates, except Llama-70B at batch 32 (5 wafers), where
+communication takes 64%. Prefill
 (2,048 tokens) is compute-bound on every DRAM-based system and on a single wafer, so memory architecture
 matters little there; peak FLOPS decide. The exceptions are the multi-chip SRAM-only deployments (77
 LPU-class chips for Llama-8B; 655 chips or 4 wafers for Llama-70B), where the all-reduces of 2,048-token
@@ -307,7 +313,7 @@ per-wafer throughput drops 2.9x. HBM systems degrade smoothly.
 Long context (32k tokens, batch 8) makes the KV cache 34 GB — larger than the weights — and raises the LPU
 chip count from 76 to 233.
 
-**Mixture-of-experts** decouples bandwidth from capacity: at batch 1 Mixtral reads ~25 GB of its 93 GB per
+**Mixture-of-experts** decouples bandwidth from capacity: at batch 1 Mixtral reads ~26 GB of its 93 GB per
 token, so DRAM designs pay bandwidth only for active experts, but SRAM-resident designs must still provision
 SRAM for all experts (432 LPU-class chips). At batch 32 nearly all experts are active.
 
@@ -325,7 +331,7 @@ costs them 2–4x; HBM4 doubles HBM3, and holding the tables in SRAM takes 296 L
 traffic eats into that: counting link energy, the LPU-class system is still 11–14x better at batch 1 but
 only 1.1–4x better at batch 32, when hundreds of chips exchange larger activations. Once static power is
 counted (TDP x time), a 76-chip LPU-class system uses about as much energy per Llama-8B token as a CPU at
-batch 1 and ~5x more than an HBM3 GPU; at batch 32 the HBM GPUs are the most energy-efficient
+batch 1 and 5.2x more than an HBM3 GPU (16x on Llama-70B; the wafer 4.2x and 8.5x); at batch 32 the HBM GPUs are the most energy-efficient
 (0.17–0.20 J/token vs ≥0.31 J for every other design). SRAM-only designs buy latency with power.
 
 ### 5.1 Per-scenario tables
@@ -357,7 +363,7 @@ batch 1 and ~5x more than an HBM3 GPU; at batch 32 the HBM GPUs are the most ene
 {{spec_traces}}
 
 **What the traces look like.** Within the traced 200M-instruction windows, seven of the eight benchmarks
-touch 3–274 MiB and make 0.2–2 DRAM accesses per thousand instructions on the CPU baseline; only 782.lbm
+touch 3–274 MiB and make 0.2–2 DRAM accesses per thousand instructions on the 1-core CPU baseline (up to 3.8 on 4 cores); only 782.lbm
 (a 542 MiB lattice sweep, 43 accesses/kinst on 1 core, 101 on 4) is bandwidth-heavy. For those seven, the
 DRAM traffic is *identical* on all seven memory systems (one exception: 4-core nest on the GPU + HBM3's 50 MiB
 LLC, 3.2 instead of 2.7 accesses/kinst): their hot working sets fit in every LLC.
@@ -384,7 +390,7 @@ almost exactly:
    (HBM4's lower random-access efficiency raises its loaded latency): neither DRAM bandwidth nor LLC capacity is
    the bottleneck. Even on 4-core lbm the HBM GPUs use only 61–67 GB/s of their 3–8 TB/s, because 4-wide cores
    with 32 MSHRs each cannot generate enough parallel misses. Loaded DRAM read latency is similar on HBM
-   (40–50 ns) and DDR5 (28–73 ns), so the GPUs' 2x IPC deficit comes from the 120 ns L2 hit latency, not DRAM.
+   (35–50 ns) and DDR5 (28–73 ns), so the GPUs' 2x IPC deficit comes from the 120 ns L2 hit latency, not DRAM.
 3. **Capacity helps only the bandwidth-heavy benchmark.** On 4-core lbm the 208–232 MiB LLCs of the mesh and
    LPU cut DRAM accesses from 101 to 32–36 per kinst and recover 0.81–0.87x of CPU IPC, while the NPU,
    whose 144 MiB does not hold the working set, sends the full stream to LPDDR5; four interleaved lbm
@@ -497,9 +503,10 @@ Average memory-controller throughput (cf. Table II of Agarwal et al.) and PSD sl
    batch-1 decode time is spent waiting for memory, and speed tracks the bandwidth the DRAM actually
    achieves (Ramulator), not its pin rate. HBM4 is 2.2x faster than HBM3; DDR5 and LPDDR5 are 10–14x slower.
 2. **SRAM-only designs buy latency with chips.** Holding the whole model in SRAM gives 6–9x lower batch-1
-   latency than an HBM3 GPU, matching public Groq/Cerebras token rates within ~1.6x, but needs 76–654
+   latency than an HBM3 GPU, at 0.76–1.9x public Groq/Cerebras token rates, but needs 76–654
    LPU-class chips or 1–4 wafers, makes all-reduce latency and per-op synchronization the bottleneck, and
-   delivers 1/12–1/37 of the GPU's throughput per chip and ~5x its energy per token once static power counts.
+   the LPU-class system delivers 1/12–1/37 of the GPU's throughput per chip and 5–16x its energy per token
+   once static power counts.
 3. **Capacity cliffs, not gradual slowdowns.** Long contexts, large batches and MoE experts grow state
    faster than SRAM grows; SRAM designs then add chips in steps and lose per-chip throughput abruptly
    (2.3x for a wafer system at batch 128), while HBM degrades smoothly.
@@ -529,7 +536,9 @@ DRAM bandwidth otherwise.
   DRAM when they do not fit, which overstates DRAM traffic for fused kernels.
 * 16-bit weights throughout. int8/fp8/fp4 would halve or quarter capacity and bandwidth needs and help the
   capacity-limited SRAM designs most.
-* SPEC: one 200M-instruction window of one workload per benchmark; instruction counts are LLVM IR
+* SPEC: one 200M-instruction window of one workload per benchmark; masked vector loads/stores and gathers
+  (0–13 static sites per binary) and uninstrumented library code (libc, libstdc++ out-of-line functions) are
+  not traced; instruction counts are LLVM IR
   instructions; SimpleO3 has no prefetcher, no I-cache and no dependences between loads; Fortran
   benchmarks are excluded; multi-core runs use 10M instructions per core, so their per-core footprint is
   smaller than in the 1-core runs (relevant only for lbm). The AI chips' SRAM latencies, as seen from a CPU
@@ -552,13 +561,15 @@ DRAM bandwidth otherwise.
 | `spec/` | SPEC config, build script, trace driver, benchmark list |
 | `results/` | `ai/` and `spec/` (JSON + CSV), `figures/` (PNG + PDF), `cache/` (calibration cache) |
 | `report/` | Templates of this document and the summary, and the builder |
-| `tests/` | 12 tests (`make test`) |
+| `tests/` | 15 tests (`make test`) |
 | `ramulator2/` | Ramulator 2.1 checkout (external) |
 | `papers/` | Ramulator and NVMExplorer papers and sources |
 
 ## 10. Reproduction
 
 ```bash
+git submodule update --init     # Ramulator 2.1, pinned at 7bead6c
+make ramulator                 # build libramulator.so + Python bindings
 make venv                      # Python deps into .venv
 make ai figures                # Ramulator calibration + AI study + sweeps (~5 min, then cached)
 make spec-install              # extract the ISO and install SPEC CPU 2026 to ~/spec/cpu2026 (~5 min)

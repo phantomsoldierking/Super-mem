@@ -29,13 +29,16 @@ spec-trace:
 	python3 spec/trace_spec.py --skip 30000000000 --insts 200000000 --jobs 8
 
 calibrate:
-	$(PY) -m memarch calibrate
+	$(PY) -m memarch calibrate $(ARGS)
 
 ai:
-	$(PY) -m memarch ai
+	$(PY) -m memarch ai $(ARGS)
 
 spec:
-	$(PY) -m memarch spec --jobs 10
+	$(PY) -m memarch spec --jobs 10 $(ARGS)
+
+# Extra CLI flags for calibrate/ai/spec/patterns, e.g. make spec ARGS="--archs gpu_hbm3 --merge"
+ARGS ?=
 
 # One short replay into RAM (/dev/shm) to check the toolchain; results/ is untouched.
 SMOKE_OUT ?= /dev/shm/memarch-smoke
@@ -44,7 +47,7 @@ spec-smoke:
 
 # Access-pattern characterization of the SPEC traces: locality + inter-request PSD at the DRAM controllers
 patterns:
-	$(PY) -m memarch patterns --jobs 6
+	$(PY) -m memarch patterns --jobs 6 $(ARGS)
 
 figures:
 	$(PY) -m memarch figures

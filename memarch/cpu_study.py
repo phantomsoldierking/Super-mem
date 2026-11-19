@@ -9,9 +9,12 @@ system behind the private L2 changes:
   * DRAM: the architecture's DRAM simulated in Ramulator (SRAM-only chips use
     a small host DDR5 spill memory, which the SPEC footprints rarely reach).
 
-Warm-cache measurement: Ramulator replays a trace cyclically, so each
-configuration is simulated for N and for 2N instructions and the second pass
-(2N - N) is reported. Its LLC is warmed by the first pass.
+Warm-cache measurement: each configuration is simulated for N and for 2N
+instructions and the difference (instructions N..2N) is reported, so the LLC
+has been warmed by the first N instructions. The traces hold 200M
+instructions, so with N = 100M (1 core) the measured part is the second half
+of the trace window, not a repeat of the first; Ramulator would only wrap
+around (replay cyclically) if 2N exceeded the trace length.
 
 Multi-core ("rate") runs give each core its own copy of the trace in a
 disjoint physical address range, sharing the LLC and DRAM.

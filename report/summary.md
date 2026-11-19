@@ -67,7 +67,7 @@ state in SRAM, chip count set by capacity.
 2. **SRAM-only designs trade chips for latency.** 6–9x lower batch-1 Llama decode latency, but 76 (8B) to 654 (70B)
    LPU-class chips or 1–4 wafers; the bottleneck becomes all-reduce latency and per-op synchronization, and
    throughput per chip falls to 1/12–1/37 of an HBM3 GPU. Memory-access energy is 13–16x lower than HBM3,
-   yet with static power counted the LPU-class system uses ~5x the energy per token of the GPU at batch 1.
+   yet with static power counted the LPU-class system uses 5.2x the energy per Llama-8B token of the GPU at batch 1.
 3. **Capacity cliffs.** Growing KV caches (long context, large batch) and idle MoE experts force SRAM designs
    to add chips abruptly (2.3x per-chip throughput loss when a wafer system doubles); HBM degrades smoothly.
 4. **Access pattern matters as much as peak bandwidth.** HBM3/HBM4 keep 58%/46% of their bandwidth on

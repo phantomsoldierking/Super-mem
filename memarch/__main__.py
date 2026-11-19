@@ -5,7 +5,7 @@
   spec               SPEC CPU 2026 trace replay (needs traces/spec/*.trace)
   patterns           Access-pattern characterization of the SPEC traces (locality, inter-request PSD)
   figures            Regenerate figures from results/
-  all                ai + spec + figures
+  all                ai + spec + patterns + figures
 """
 import argparse
 import sys

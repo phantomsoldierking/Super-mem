@@ -31,10 +31,10 @@ Seven memory-system archetypes are compared (public-spec class parameters, not v
 | Step | Command |
 |---|---|
 | Ramulator + Python env | `git submodule update --init && make ramulator venv` |
-| AI study | `make calibrate ai` (`--fresh` to bypass the calibration cache) |
+| AI study | `make calibrate ai` (`make calibrate ARGS=--fresh` bypasses the calibration cache) |
 | Tracer | `make tracer` |
 | SPEC install/build/trace | `make spec-install spec-build spec-trace` |
-| SPEC replay | `make spec` (≈3 h) — subsets: `--archs … --benchmarks … --cores … --merge` |
+| SPEC replay | `make spec` (≈3 h) — subsets: `make spec ARGS="--archs … --benchmarks … --cores … --merge"` |
 | Smoke test | `make spec-smoke` (≈40 s, results to `/dev/shm/memarch-smoke`) |
 | Access patterns | `make patterns` (≈1 h): trace locality + inter-request PSD per DRAM system |
 | Figures, PDFs, tests | `make figures report test` |
@@ -63,7 +63,7 @@ Example: HBM3 sustains ~99% on streams but ~58% on random lines; GDDR6 drops to 
 - **Workloads:** Llama-3.1 8B/70B decode and prefill, Mixtral-8x7B (MoE), ResNet-50,
   DLRM — 12 scenarios plus batch-size and context-length sweeps.
 - **Operator graphs** record FLOPs and bytes per traffic class for each operator.
-- **Placement** follows the SRAM role: cache (hit-rate based), scratchpad (pinned, overflow to
+- **Placement** follows the SRAM role: cache (all-or-nothing: state hits only if it fits), scratchpad (pinned, overflow to
   DRAM), or resident (chip count set by capacity — the minimum number of chips that hold
   weights + KV cache).
 - **Timing per operator:** `max(compute, memory) + all-reduce + overhead`, where memory time
@@ -83,7 +83,7 @@ Example: HBM3 sustains ~99% on streams but ~58% on random lines; GDDR6 drops to 
    (`clang -O2 -fpass-plugin=… ` + `memtrace_rt.o`) for eight C/C++ rate benchmarks.
 4. **Trace.** `spec/trace_spec.py` runs each refrate workload with `MT_*` env vars.
 5. **Replay.** `cpu_study.py` replays each trace on Ramulator's SimpleO3 core (4-wide, 4 GHz,
-   128-entry window) with the architecture's SRAM as a 16-way LLC and its DRAM behind it.
+   128-entry window) with the architecture's SRAM as the LLC (power-of-two sets, 16-29 ways) and its DRAM behind it.
    Warm measurement = run(2N) − run(N). 4-core runs use per-core trace copies in disjoint
    address ranges sharing LLC and DRAM. Metrics: IPC (vs CPU + DDR5), DRAM accesses per
    kilo-instruction, DRAM bandwidth and latency, row-hit rate.

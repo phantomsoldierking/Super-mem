@@ -93,7 +93,7 @@ def test_step_time_accounting():
     for a in load_all():
         r = evaluate(a, wl(batch=8), FAKE_CALIB if a.has_dram else None)
         assert r.step_s == pytest.approx(r.compute_bound_s + r.memory_bound_s + r.comm_s + r.overhead_s)
-        assert r.step_s >= max(r.compute_s, r.memory_s) / 1e3  # sanity
+        assert r.step_s >= max(r.compute_s, r.memory_s) * (1 - 1e-9)  # sanity
 
 
 # ---------------------------------------------------------------- Ramulator

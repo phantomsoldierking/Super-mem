@@ -63,8 +63,10 @@ def welch_psd(x, nperseg=None):
     if nperseg is None:
         nperseg = int(2 ** np.clip(np.floor(np.log2(max(n, 1) / 8)), 8, 14))
     nperseg = min(nperseg, n)
+    if nperseg < 2:
+        return np.array([]), np.array([])
     step = nperseg // 2
-    win = np.hanning(nperseg)
+    win = np.hanning(nperseg + 1)[:-1]  # periodic Hann window
     scale = 1.0 / (win ** 2).sum()
     acc, k = np.zeros(nperseg // 2 + 1), 0
     for start in range(0, n - nperseg + 1, step):
@@ -72,13 +74,19 @@ def welch_psd(x, nperseg=None):
         seg = (seg - seg.mean()) * win
         acc += np.abs(np.fft.rfft(seg)) ** 2
         k += 1
-    psd = 2 * scale * acc / max(k, 1)
+    psd = scale * acc / max(k, 1)
+    psd[1:] *= 2  # one-sided: fold negative frequencies ...
+    if nperseg % 2 == 0:
+        psd[-1] /= 2  # ... except the Nyquist bin, which has no mirror image
     f = np.fft.rfftfreq(nperseg)
     return f[1:], psd[1:]
 
 
 def summarise_psd(f, s, bins=32):
     """Log-binned spectrum plus slope fits (whole range, low half, high half) and a class label."""
+    if len(f) < 3:
+        return {"f": [], "psd": [], "beta": float("nan"), "beta_low": float("nan"), "beta_high": float("nan"),
+                "psd_class": "too short"}
     edges = np.logspace(np.log10(f[0]), np.log10(f[-1]), bins + 1)
     edges[-1] = np.nextafter(edges[-1], np.inf)  # include the Nyquist bin
     fb, sb = [], []
@@ -102,6 +110,8 @@ def summarise_psd(f, s, bins=32):
 
 def classify(beta, lo, hi):
     """PSD class from the whole-range slope and the slopes of the low/high-frequency halves."""
+    if not np.isfinite([beta, lo, hi]).all():
+        return "too short"
     if abs(lo - hi) >= 0.5:
         return "multifractal"
     if beta <= -0.3:
@@ -186,6 +196,9 @@ def _mc_job(job):
     prefix = Path(job["tmp"]) / f"{job['bench']}.{job['arch']}"
     try:
         with contextlib.redirect_stdout(io.StringIO()):
+            # The simulation is deterministic, so the 2N run passes instruction N at the cycle where the
+            # N-instruction run ends: that cycle starts the warm window (instructions N..2N).
+            first = run_cpu_trace(arch, [Path(job["trace"])], job["insts"], CORE)
             stats = run_cpu_trace(arch, [Path(job["trace"])], 2 * job["insts"], CORE, cmd_trace=prefix)
         cols, acts = [], []
         for f in glob.glob(f"{prefix}.ch*"):
@@ -205,13 +218,17 @@ def _mc_job(job):
         raise RuntimeError(f"{job['bench']} {job['arch']}: command trace holds {len(col):,} column commands "
                            f"for {served:,} requests ({recorded:.1%}); recording incomplete")
     act = np.concatenate(acts).astype(float) * tck_ns
-    t0, t1 = col[-1] / 2, col[-1]  # warm half: the LLC was filled by the first half
-    warm = col[col >= t0]
-    nact = int((act >= t0).sum())
+    core_ns = 1 / CORE["clock_ghz"]
+    t0 = first["core_cycles"][0] * core_ns  # core reaches instruction N (LLC warmed by the first N)
+    t1 = stats["core_cycles"][0] * core_ns  # core reaches instruction 2N
+    warm = col[(col >= t0) & (col <= t1)]
+    nact = int(((act >= t0) & (act <= t1)).sum())
     ipat = np.diff(warm)
     psd = summarise_psd(*welch_psd(ipat))
     return dict(
         benchmark=job["bench"], arch=job["arch"], requests=len(warm), window_us=(t1 - t0) / 1000,
+        # DRAM reads/writes served in instructions N..2N (Ramulator counters, 2N run minus N run)
+        dram_reads=stats["dram_reads"] - first["dram_reads"], dram_writes=stats["dram_writes"] - first["dram_writes"],
         recorded_fraction=recorded,
         throughput_GBps=len(warm) * 64 / (t1 - t0), act_per_column=nact / max(1, len(warm)),
         ipat_mean_ns=float(ipat.mean()), ipat_median_ns=float(np.median(ipat)),
@@ -252,9 +269,10 @@ def run(benchmarks=None, archs=None, insts=MC_INSTS, jobs=None, out_dir=None, tm
         tr = {**{t["benchmark"]: t for t in prev["traces"]}, **tr}
         archs = [a for a in MC_ARCHS if a in set(prev["archs"]) | set(archs)]
     order = {a: i for i, a in enumerate(archs)}
-    mc.sort(key=lambda r: (r["benchmark"], order[r["arch"]]))
-    out = {"method": {"mc_insts_per_pass": insts, "warm": "second half of a 2N-instruction 1-core replay (by time)",
-                           "psd": "Welch, Hann window, 50% overlap; slope fitted on 32 log-spaced bins",
+    mc.sort(key=lambda r: (r["benchmark"], order.get(r["arch"], len(order))))
+    out = {"method": {"mc_insts_per_pass": insts,
+                      "warm": "instructions N..2N of a 2N-instruction 1-core replay (start = end cycle of an N-instruction run)",
+                      "psd": "Welch, periodic Hann window, 50% overlap; slope fitted on 32 log-spaced bins",
                            "classes": "multifractal: |beta_low-beta_high|>=0.5; anti-persistent: beta<=-0.3; stationary: "
                                    "|beta|<0.3 and both halves within +-0.4; otherwise monofractal"},
                "archs": archs, "traces": [tr[b] for b in sorted(tr)], "mc": mc}

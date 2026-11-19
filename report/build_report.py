@@ -185,20 +185,22 @@ def replay_config(d, _):
                    "100M warm-up, 200M traced (LLVM IR instructions)")],
         ["Private L1D / L2 (tracer)", "48 KiB 12-way / 2 MiB 16-way, 64 B lines, LRU, write-back"],
         ["Core (Ramulator SimpleO3)", f"{core['ipc']}-wide, {core['window']}-entry window, {core['clock_ghz']:g} GHz"],
-        ["Shared LLC", f"architecture's SRAM, {core['llc_ways']}-way, {core['mshrs_per_core']} MSHRs per core"],
+        ["Shared LLC", (f"architecture's SRAM, power-of-two sets, at least {core['llc_ways']} ways (per-architecture "
+                        f"ways below), {core['mshrs_per_core']} MSHRs per core")],
         ["Memory controller", "one per channel; FR-FCFS, open row, MOP4CLXOR mapping, refresh, 64-entry queues"],
-        ["IPC study", "1 and 4 cores; warm: run(2N) - run(N), N = 100M (1 core) / 10M per core (4 cores)"],
-        ["Access-pattern study", ("1 core; 2 x 30M instructions, second half analysed; every DRAM command "
-                                 "recorded by Ramulator's CmdTraceRecorder")],
+        ["IPC study", ("1 and 4 cores; run(2N) - run(N), i.e. instructions N..2N with the LLC warmed by the first N; "
+                       "N = 100M (1 core) / 10M per core (4 cores)")],
+        ["Access-pattern study", ("1 core; 2 x 30M instructions, instructions 30M-60M analysed; every DRAM "
+                                 "command recorded by Ramulator's CmdTraceRecorder")],
     ])
     get = {r["arch"]: r for r in d.spec["results"] if r["cores"] == 1}
     rows = []
     for a in d.archs:
         r = get.get(a.name)
         if r:
-            rows.append([a.label, gb(r["llc_bytes"]), f"{r['llc_latency_cycles']}",
+            rows.append([a.label, gb(r["llc_bytes"]), f"{r['llc_ways']}", f"{r['llc_latency_cycles']}",
                          f"{r['llc_latency_cycles'] / core['clock_ghz']:.0f}", r["dram"]])
-    per_arch = table(["Architecture", "LLC (1 core)", "LLC hit (cycles)", "LLC hit (ns)", "DRAM"], rows)
+    per_arch = table(["Architecture", "LLC (1 core)", "Ways", "LLC hit (cycles)", "LLC hit (ns)", "DRAM"], rows)
     return general + "\n\n" + per_arch
 
 

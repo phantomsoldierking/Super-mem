@@ -42,17 +42,20 @@ def trace_one(bench, args):
     cmd = command_for(run_dir, args.workload)
     env = dict(os.environ, MT_OUT=str(trace), MT_SKIP=str(args.skip), MT_WARM=str(args.warm),
                MT_INSTS=str(args.insts))
+    stats_path = Path(str(trace) + ".json")
+    stats_path.unlink(missing_ok=True)  # never pick up the stats of an earlier run
     t0 = time.time()
-    proc = subprocess.run(cmd, cwd=run_dir, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    proc = subprocess.run(cmd, check=False, cwd=run_dir, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                           timeout=args.timeout)
     elapsed = time.time() - t0
-    stats_path = Path(str(trace) + ".json")
     if not stats_path.exists():
-        return bench, dict(error=f"no stats (exit {proc.returncode}): {proc.stderr.decode()[-400:]}")
+        return bench, {"error": f"no stats (exit {proc.returncode}): {proc.stderr.decode()[-400:]}"}
     stats = json.loads(stats_path.read_text())
     stats.update(benchmark=bench, command=" ".join(cmd[1:]), input_size=args.size, workload_index=args.workload,
                  wall_seconds=round(elapsed, 1), exit_code=proc.returncode)
     stats_path.write_text(json.dumps(stats, indent=2) + "\n")
+    if stats.get("end_reason") != "trace_window_complete":
+        stats["error"] = f"trace window incomplete: {stats.get('end_reason')} (exit {proc.returncode})"
     return bench, stats
 
 
