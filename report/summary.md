@@ -81,9 +81,9 @@ state in SRAM, chip count set by capacity.
 6. **The program sets the shape of the memory stream; the memory system only rescales it.** The traces range
    from pure streams (marian, sealcrypto: 99–100% stream) to scattered reuse (omnetpp: 89% re-referenced).
    For five of eight benchmarks the PSD slope β varies by at most 0.05 across the five memory systems.
-    * Stationary: sealcrypto and omnetpp.
+    * Stationary: sealcrypto, and omnetpp on four of five systems.
     * Monofractal: stockfish, sqlite and zstd.
-    * Multifractal: marian, with 1/f<sup>2</sup> weight phases and a 10-request period, and nest.
+    * Multifractal: marian, with 1/f<sup>2</sup> weight phases and a period of about 13 requests, and nest.
 
     Controller throughput follows IPC (CPU + DDR5 1.2–3.8x the GPUs). Row-buffer hits fall as the channel count
     rises, so wide HBM turns even sequential streams into row misses.

@@ -190,8 +190,8 @@ def replay_config(d, _):
         ["Memory controller", "one per channel; FR-FCFS, open row, MOP4CLXOR mapping, refresh, 64-entry queues"],
         ["IPC study", ("1 and 4 cores; run(2N) - run(N), i.e. instructions N..2N with the LLC warmed by the first N; "
                        "N = 100M (1 core) / 10M per core (4 cores)")],
-        ["Access-pattern study", ("1 core; 2 x 30M instructions, instructions 30M-60M analysed; every DRAM "
-                                 "command recorded by Ramulator's CmdTraceRecorder")],
+        ["Access-pattern study", ("1 core; 2 x 30M instructions, second half of the run time analysed; every "
+                                 "DRAM command recorded by Ramulator's CmdTraceRecorder")],
     ])
     get = {r["arch"]: r for r in d.spec["results"] if r["cores"] == 1}
     rows = []

@@ -225,13 +225,12 @@ of Agarwal et al. (ISCAS 2025, "Towards Improving Memory Access in Large-Scale N
   *stream share*, i.e. misses that are the next line after any of the previous 16 misses (what a 16-stream
   prefetcher would catch, even when streams interleave); the re-reference share (misses to a line already
   missed in the window); and the interval between misses in instructions.
-* **Memory-controller level** (per architecture): a single-core replay of 2 x 30M instructions, of which
-  instructions 30M–60M are analysed (the window starts at the cycle where an identical 30M-instruction run
-  ends, so the LLC is warm and every architecture covers the same instructions) of each trace on each of the five DRAM-backed systems, with Ramulator's `CmdTraceRecorder` plugin
+* **Memory-controller level** (per architecture): a warm single-core replay (2 x 30M instructions; the second half of
+  the run time is analysed, after the first half has warmed the LLC) of each trace on each of the five DRAM-backed systems, with Ramulator's `CmdTraceRecorder` plugin
   on every channel controller. The RD/WR column commands of all channels are merged into one time series, and
   the time between consecutive commands is the *inter-request time* at the memory controllers. The plugin sees
   commands when they are issued, so this is the service-side counterpart of the paper's inter-packet arrival
-  time. Its power spectral density S(f) is estimated with Welch's method (periodic Hann window, 50% overlap; frequency in
+  time. Its power spectral density S(f) is estimated with Welch's method (Hann window, 50% overlap; frequency in
   cycles per request) and summarised by the log-log slope β of S(f) ∝ 1/f<sup>β</sup>, fitted on 32 log-spaced bins.
   The paper defines the classes qualitatively; the thresholds here are ours. A flat spectrum (|β| < 0.3, and both
   half-range slopes within ±0.4) is called **stationary** (predictable
@@ -463,37 +462,32 @@ Average memory-controller throughput (cf. Table II of Agarwal et al.) and PSD sl
 **Findings.**
 
 1. **The program, not the memory system, sets the shape of the request stream.** For five of the eight
-   benchmarks β varies by at most 0.05 across the five memory systems. 33 of the 40 benchmark-system pairs have
-   their benchmark's majority class, and the exceptions lie close to a class boundary (stockfish and zstd). This
-   differs from the NoC study, where buffer and LLC sizes changed the PSD class. Here every hot set fits in every
-   LLC, so the memory system only rescales the timing.
-2. **Three predictability levels.**
-    * *Stationary, flat spectrum:* sealcrypto and omnetpp everywhere, and lbm on the AI memory systems. Their
-      request flows have no long-range correlation: regular bursts, memoryless random reuse and steady streaming.
-    * *Monofractal (β ≈ 0.3–0.55):* stockfish, sqlite and zstd, with phase behaviour at one scale.
-    * *Multifractal:* marian and nest. marian's spectrum falls as 1/f<sup>2</sup> at low frequency, from layer-by-layer
-      weight phases, and has sharp peaks at multiples of 0.1 cycles/request, a period of about 10 requests. nest
-      switches between dense and streaming phases.
-    * *Anti-persistent:* lbm on CPU + DDR5 (β = −0.43). DDR5 serves it fast enough that back-to-back bursts and
-      gaps alternate, putting most spectral power at high frequency.
+   benchmarks β varies by at most 0.05 across the five memory systems, and 33 of the 40 benchmark-system pairs
+   have their benchmark's majority class. This differs from the NoC study, where buffer and LLC sizes changed the
+   PSD class. Here every hot set fits in every LLC, so the memory system mainly rescales the timing.
+2. **Predictability levels.**
+    * *Stationary, flat spectrum:* sealcrypto everywhere, omnetpp on four of the five systems (monofractal on
+      LPDDR5), and lbm on the AI memory systems.
+    * *Monofractal:* mostly stockfish, sqlite and zstd, with phase behaviour at one scale.
+    * *Multifractal:* marian and nest. marian's spectrum falls as 1/f<sup>2</sup> at low frequency and has sharp
+      peaks at multiples of about 0.08 cycles/request, a period of about 13 requests. nest switches between dense
+      and streaming phases.
+    * *Anti-persistent:* lbm on CPU + DDR5 (β = −0.43): back-to-back bursts and gaps alternate, putting most
+      spectral power at high frequency.
 
 3. **Throughput follows the core, not the DRAM.** Controller throughput is highest on CPU + DDR5 for every
-   benchmark (0.13–16 GB/s) and lowest on the GPUs, 1.2–3.8x lower. Every system serves the same requests per
-   instruction, so throughput scales with IPC, which the LLC latency sets. Even lbm draws only 6–8 GB/s from
-   HBM systems with terabytes per second of peak bandwidth (single core). The one larger gap between the two GPUs is lbm, at 8.4 vs 6.0 GB/s. Over 20M
-   instructions both GPUs issue exactly 784,178 reads, but the 50 MiB LLC of GPU + HBM3 evicts 85,138 dirty
-   lattice lines, while the 128 MiB LLC of GPU + HBM4 holds them all. The difference is LLC capacity, not DRAM.
+   benchmark (0.13–16 GB/s) and 1.2–3.8x lower on the GPUs. For the benchmarks whose working sets fit every LLC,
+   each system serves the same requests per instruction, so throughput scales with IPC, which the LLC latency
+   sets. Even lbm draws only 6–8 GB/s from HBM systems with terabytes per second of peak bandwidth (single core).
+   The analysis window is the second half of the run time, so throughputs are compared as rates.
 
 4. **Row-buffer locality needs both a spatial pattern and few channels** (Figure 15).
-    * Only sealcrypto (80% next line) and lbm (70% same page) produce many row hits.
-    * Their hit rates rise as the channel count falls: GPU HBM4 (128 channels) 2–17%, HBM3 (64) 7–30%, DDR5 (16)
-      22–55%, LPDDR5 (8) 27–73%, the 2-channel host DDR5 of the SRAM-only designs up to 71–82%.
+    * Only sealcrypto, lbm, nest and (on the 2-channel host memory) zstd reach high row-hit rates.
+    * For sealcrypto and lbm the hit rate is 2–17% on HBM4 (128 channels), 7–30% on HBM3 (64), 20–49% on GDDR6
+      (8), 22–55% on DDR5 (16), 27–73% on LPDDR5 (8) and 38–82% on the 2-channel host DDR5 of the SRAM-only
+      designs.
     * Cache-line interleaving spreads a stream over every channel, so on a wide memory system each row sees only a
-      few lines before refresh or another stream closes it.
-    * marian's perfect stream gets almost no row hits anywhere. It misses only once every ~6,700 instructions, so
-      each channel sees its next line microseconds later, after a refresh has closed the row.
-    * Wide AI memory systems therefore turn even sequential CPU-style streams into row misses, the same effect
-      behind the low random-access efficiency of HBM and GDDR6 in Section 3.1.
+      few lines of it. Wide AI memory systems therefore turn even sequential CPU-style streams into row misses.
 
 {{fig:15_locality|Figure 15. Left: distance of each L2 miss to the previous one (trace level). Right: DRAM row-buffer hit rate in the warm 1-core replays of Section 6 (100M instructions); the SRAM-only designs reach only a 2-channel DDR5 host memory.}}
 
