@@ -88,16 +88,16 @@ Large-language-model (LLM) inference is limited by data movement more than by ar
 
 Datasheet bandwidth hides three effects. The bandwidth a DRAM system \emph{achieves} depends on the access pattern; the same memory systems must also run irregular, latency-bound general-purpose code; and \emph{how} requests arrive at the memory controllers determines how predictable memory access is~\cite{agarwal2025}. We study all three on one substrate. Our contributions are:
 \begin{enumerate}
-\item a reproducible framework that evaluates a chip's memory system, described in one configuration file, with cycle-accurate DRAM (Ramulator~2.1, the current release of Ramulator~2.0~\cite{luo2024}) on AI inference and on SPEC CPU~2026;
-\item a per-access-pattern DRAM calibration feeding an operator-level placement, timing and energy model of inference;
-\item an LLVM pass plugin and runtime that turn C/C++ programs into L2-miss traces, replayed on every memory system with an identical core;
-\item a controller-level characterization that classifies the DRAM request stream by its PSD, extending the qualitative classes of~\cite{agarwal2025} with explicit thresholds and an anti-persistent class.
+\item a reproducible framework that evaluates memory systems with cycle-accurate DRAM (Ramulator~2.1, the current release of Ramulator~2.0~\cite{luo2024}) on AI inference and SPEC CPU~2026;
+\item a per-access-pattern DRAM calibration feeding an operator-level inference model;
+\item an LLVM pass that turns C/C++ programs into L2-miss traces for replay;
+\item a PSD-based classification of the DRAM request stream, extending~\cite{agarwal2025} with explicit thresholds and an anti-persistent class.
 \end{enumerate}
 
 %=====================================================================
 \section{Related Work}\label{sec:related}
 %=====================================================================
-The memory wall~\cite{wulf1995} has become the main limit of transformer inference~\cite{gholami2024}. Pope~\emph{et~al.}~\cite{pope2023} model LLM inference across accelerators, and PagedAttention~\cite{kwon2023} turns KV reads into page gathers. LLMCompass~\cite{zhang2024} and GenZ~\cite{bambhaniya2024} model LLM inference hardware in more detail (operator mapping, parallelism strategies, interconnect topologies). Our operator model is simpler, a roofline~\cite{williams2009} per operator, but it uses DRAM bandwidth measured per access pattern instead of peak bandwidth; we do not compare against these frameworks quantitatively. AI accelerators range from the TPU's on-chip buffer plus DRAM~\cite{jouppi2017} to SRAM-only designs~\cite{abts2020,lie2023}; they are usually compared on vendor benchmarks, whereas we compare their \emph{memory systems} under one model. Ramulator~\cite{kim2016,luo2024} provides cycle-accurate DRAM models; we use it both to calibrate access patterns and as the back end of trace replay. SPEC suites have been characterised with binary instrumentation~\cite{luk2005} and hardware counters~\cite{limaye2018}; we instrument at the LLVM IR level~\cite{lattner2004}, inside the SPEC build harness. Finally, NoC traffic is known to be non-stationary and fractal~\cite{bogdan2010}, and Agarwal~\emph{et~al.}~\cite{agarwal2025} used the PSD of inter-arrival times at the memory controller to show how cache, buffer and network size change its predictability. We apply this analysis at the DRAM command level across five DRAM technologies.
+Memory bandwidth is the main limit of transformer inference~\cite{wulf1995,gholami2024}, and paged KV caches~\cite{kwon2023} turn KV reads into page gathers. Analytical models of LLM inference hardware, from rooflines~\cite{williams2009} and Pope~\emph{et~al.}~\cite{pope2023} to LLMCompass~\cite{zhang2024} and GenZ~\cite{bambhaniya2024}, model parallelism and on-chip tiling in more detail than we do but use peak memory bandwidth; our operator model is a simpler per-operator roofline that uses DRAM bandwidth measured per access pattern, and we do not compare against them quantitatively. Accelerator memory systems range from on-chip buffers backed by DRAM~\cite{jouppi2017} to SRAM-only designs~\cite{abts2020,lie2023}; we compare them under one model, on top of Ramulator~\cite{kim2016,luo2024}. Unlike binary-instrumentation~\cite{luk2005} or counter-based~\cite{limaye2018} SPEC characterisations, our tracer works at the LLVM IR level~\cite{lattner2004}. Finally, NoC traffic is non-stationary and fractal~\cite{bogdan2010}, and Agarwal~\emph{et~al.}~\cite{agarwal2025} used the PSD of inter-arrival times at the memory controller to show how cache, buffer and network size change its predictability; we apply this analysis at the DRAM command level across five DRAM technologies.
 
 %=====================================================================
 \section{Problem Scenario and System Model}\label{sec:model}
@@ -107,10 +107,10 @@ The memory wall~\cite{wulf1995} has become the main limit of transformer inferen
 \textbf{Archetypes.} Table~\ref{tab:arch} lists the seven memory systems, with public-specification class values rather than vendor models. The key distinction is the role of the SRAM: a hardware \emph{cache} (CPU, GPU), a compiler-managed \emph{scratchpad} in front of DRAM (mesh, NPU), or \emph{resident} storage with no DRAM (LPU, wafer).
 
 \begin{table*}[t]
-\caption{Memory-System Archetypes (Public-Specification Class Values; TFLOPS = bf16 Peak)}
+\caption{Memory-System Archetypes (Public-Specification Class Values; TFLOPS = bf16 Peak). HBM3 Pairs the Bandwidth of 64 64-bit Channels (4 Stacks) with an 80\,GiB Capacity.}
 \label{tab:arch}
 \centering
-\footnotesize
+\scriptsize
 \setlength{\tabcolsep}{2pt}
 \begin{tabular}{@{}llllrrr@{}}
 \toprule
@@ -127,9 +127,9 @@ Wafer-scale SRAM & 44 GiB (resident) & 21,000 TB/s, 200 ns & none & 62,500 & 150
 \end{tabular}
 \end{table*}
 
-\textbf{Workloads.} The AI study covers Llama-3.1-8B and 70B~\cite{llama3} decode (batch 1 and 32, and a 32k-token context) and prefill, Mixtral-8x7B~\cite{jiang2024} decode, ResNet-50~\cite{he2016} and a DLRM-style recommender~\cite{naumov2019} with 64\,GB of embedding tables, all with 16-bit weights. The general-purpose study uses eight SPEC CPU~2026~\cite{spec2026} rate benchmarks with varied memory behaviour: stockfish, sqlite, omnetpp, sealcrypto, nest, marian, zstd and lbm.
+\textbf{Workloads.} The AI study covers Llama-3.1-8B and 70B~\cite{llama3} decode at batch 1 and 32 (2,048-token context; 4,096 for 70B at batch 32) and at batch 8 with a 32k context, prefill of a 2,048-token prompt at batch 1, Mixtral-8x7B~\cite{jiang2024} decode (top-2 of 8 experts; $8[1-(1-2/8)^{t}]$ distinct experts for $t$ tokens), ResNet-50~\cite{he2016} at batch 1 and 64, and a DLRM-style recommender~\cite{naumov2019} at batch 2,048 with 26 tables of 128-dimensional embeddings (250M rows, 64\,GB in total) and 10 lookups per table, all with 16-bit weights. The general-purpose study uses eight SPEC CPU~2026~\cite{spec2026} rate benchmarks with varied memory behaviour: stockfish, sqlite, omnetpp, sealcrypto, nest, marian, zstd and lbm.
 
-\textbf{Memory model.} Each DRAM system is simulated in Ramulator~2.1 with one FR-FCFS~\cite{rixner2000}, open-row controller per channel. Consecutive 64\,B lines are interleaved across channels, and within a channel the MOP4CLXOR mapping spreads them over banks and rows. For SPEC, a common 4-wide, 4\,GHz out-of-order core runs in front of it, and the architecture's SRAM acts as the last-level cache (LLC) with its own capacity and the single latency of Table~\ref{tab:arch}. Power-of-two set counts round 210 and 230\,MiB to 208 and 232\,MiB, and the wafer's 44\,GiB is capped at a 1\,GiB LLC, which no trace outgrows. The SRAM-only designs reach a 2-channel DDR5 host memory for misses. This is an idealized sensitivity study: scratchpads and distributed tile memories are treated as a hardware-managed cache with one uniform, chip-scale latency and no software prefetching, so the SPEC results for the AI designs are an upper bound on their latency cost.
+\textbf{Memory model.} Each DRAM system is simulated in Ramulator~2.1 with one FR-FCFS~\cite{rixner2000}, open-row controller per channel. Consecutive 64\,B lines are interleaved across channels, and within a channel the MOP4CLXOR mapping spreads them over banks and rows. For SPEC, a common 4-wide, 4\,GHz out-of-order core runs in front of it, and the architecture's SRAM acts as the last-level cache (LLC) with its own capacity and the single latency of Table~\ref{tab:arch}. Power-of-two set counts round 210 and 230\,MiB to 208 and 232\,MiB, and the wafer's 44\,GiB is capped at a 1\,GiB LLC, which no trace outgrows. Associativity is the capacity divided by the largest power-of-two set count that gives at least 16 ways (16--29 ways). The SRAM-only designs reach a 64\,GiB DDR5-4800 host memory with two 32-bit channels for misses. This is an idealized sensitivity study that cuts both ways: treating scratchpads and distributed tile memories as a tag-checked hardware cache is optimistic for irregular code, while charging every access the single chip-scale latency, with no hardware prefetcher, is pessimistic for local and streaming accesses.
 
 %=====================================================================
 \section{Mathematical Formulation}\label{sec:math}
@@ -140,7 +140,7 @@ We define only the inference model and the metrics we report; DRAM and core timi
 \begin{equation}
 n = \left\lceil \frac{P + A}{0.9\, C} \right\rceil .\label{eq:chips}
 \end{equation}
-A resident SRAM serves all bytes. A scratchpad holds activations (if they fit) and then as much persistent state as fits; everything else streams from DRAM. A cache serves persistent state only if all of it fits; GPU shared memory and hot-row caching (e.g.\ of skewed embedding tables) are not modelled. For mixture-of-experts models $P$ counts all experts, while traffic counts only the expected number of distinct active experts. One inference step executes the model's operators $o$ (matrix multiplications, attention, normalization) in order, each split across all $n$ chips (pure tensor parallelism). The step time is
+A resident SRAM serves all bytes. A scratchpad holds all activations if they fit (otherwise all activation traffic goes to DRAM) and then as much persistent state as fits; everything else streams from DRAM. A cache serves persistent state only if all of it fits; GPU shared memory and hot-row caching (e.g.\ of skewed embedding tables) are not modelled. For mixture-of-experts models $P$ counts all experts, while traffic counts only the expected number of distinct active experts. One inference step executes the model's fused operators $o$ in order (four per transformer layer plus embedding and output layers: 130 for Llama-8B, 322 for Llama-70B, 162 for Mixtral, 54 for ResNet-50), each split across all $n$ chips (pure tensor parallelism). The step time is
 \begin{equation}
 T = \sum_{o} \Big[\max\big(t^{\mathrm{comp}}_o,\ t^{\mathrm{mem}}_o\big) + t^{\mathrm{comm}}_o + \tau\Big],\label{eq:step}
 \end{equation}
@@ -148,7 +148,7 @@ with four terms per operator:
 \begin{itemize}
 \item $t^{\mathrm{comp}}_o = F_o/(n\,\Pi)$: the operator's FLOPs $F_o$, split over $n$ chips, at the chip's effective FLOP rate $\Pi$ (matrix peak times the efficiency in Table~\ref{tab:const}; half the vector peak for vector operators).
 \item $t^{\mathrm{mem}}_o = \sum_p D_{o,p}/(n\,B_d(p))$: its DRAM bytes in each access pattern $p$, split over $n$ chips, each at the bandwidth \emph{measured for that pattern} rather than the datasheet bandwidth. SRAM bytes are timed the same way with the SRAM bandwidth; the SRAM and DRAM paths run in parallel and the slower one counts. SRAM latency is not modelled.
-\item $t^{\mathrm{comm}}_o$: the collective after the operator when $n>1$. An all-reduce of $M$ bytes takes $2\lceil\log_2 n\rceil h + 2\frac{n-1}{n}\frac{M}{L}$, with hop latency $h$ and link bandwidth $L$~\cite{thakur2005}; embeddings use an all-to-all.
+\item $t^{\mathrm{comm}}_o$: the collective after the operator when $n>1$. An all-reduce of $M$ bytes takes $2\lceil\log_2 n\rceil h + 2\frac{n-1}{n}\frac{M}{L}$, with hop latency $h$ and link bandwidth $L$~\cite{thakur2005}; transformer layers need two all-reduces each (65 for Llama-8B), including Mixtral's expert layers. DLRM's embeddings use one all-to-all, $\lceil\log_2 n\rceil h + \frac{n-1}{n^2}\frac{M}{L}$.
 \item $\tau$: a fixed launch or synchronization overhead per operator (Table~\ref{tab:const}).
 \end{itemize}
 Compute and memory overlap, so the slower of the two sets the operator's time; this is a roofline~\cite{williams2009} per operator. At batch~1, for example, decode reads every weight once while doing little arithmetic, so $t^{\mathrm{mem}}$ dominates and $T$ is roughly the weight bytes divided by the measured stream bandwidth. The step is \emph{bound by} whichever of the four terms contributes most to $T$. Pure tensor parallelism over all $n$ chips is a simplification: at the 76--654 chips of the SRAM-only designs, real deployments combine it with pipeline parallelism, so our communication time is an upper bound. Energy per token counts the bits moved in SRAM, DRAM and links times their energy per bit (Table~\ref{tab:const}) plus 0.4\,pJ/FLOP; an upper bound with static power is $n\times\mathrm{TDP}\times T$ per token.
@@ -182,11 +182,11 @@ Wafer (SRAM)$^\ast$ & 0.4 & 5 & 2.0 & 0.3 & -- & 8\\
 %=====================================================================
 \section{Proposed Methodology}\label{sec:method}
 %=====================================================================
-Fig.~\ref{fig:framework} shows the framework. Only the memory system differs between architectures.
+Fig.~\ref{fig:framework} shows the framework. The SPEC branch varies only the memory system behind one core; the AI branch varies whole chip classes (Tables~\ref{tab:arch} and~\ref{tab:const}).
 
 \begin{figure*}[t]
 \centering
-\begin{tikzpicture}[
+\begin{tikzpicture}[scale=0.85, every node/.style={transform shape},
   font=\footnotesize,
   box/.style={draw, rounded corners=2pt, align=center, minimum height=9mm, text width=38mm, fill=white},
   grp/.style={draw, rounded corners=4pt, inner sep=6pt},
@@ -221,7 +221,7 @@ Fig.~\ref{fig:framework} shows the framework. Only the memory system differs bet
 \draw[arr] (rec) -- (psd);
 \draw[arr] (trace.north east) -- (loc.west);
 \end{tikzpicture}
-\caption{Framework. Only the memory system differs between architectures: the same operator graphs are used for AI and the same core for SPEC.}
+\caption{Framework. The AI branch uses the same operator graphs on every chip class; the SPEC branch uses the same core in front of every memory system.}
 \label{fig:framework}
 \end{figure*}
 
@@ -244,7 +244,7 @@ Fig.~\ref{fig:framework} shows the framework. Only the memory system differs bet
 \end{algorithmic}
 \end{algorithm}
 
-\textbf{Replay and characterization.} Each trace is replayed on all seven architectures with 1 core ($N=100$M) and 4 cores ($N=10$M per core; copies of the trace in disjoint address ranges, started together, sharing the LLC and DRAM), giving 112 results. Algorithm~\ref{alg:psd} records every DRAM command of a 60M-instruction replay on the five DRAM-backed systems and analyses the second half of the run time, after the first half has warmed the LLC; a completeness check discards recordings that lost commands. The gaps between consecutive commands, merged over all channels, form the \emph{inter-request time}, the service-side counterpart of the inter-packet arrival time of~\cite{agarwal2025}; zero gaps (commands in the same cycle on different channels) are kept. Its power spectral density $S(f)$ (Welch's method~\cite{welch1967}, Hann window, 50\% overlap; $f$ in cycles per request) is averaged into 32 log-spaced bins and summarised by the least-squares slope $\beta$ of $S(f)\propto 1/f^{\beta}$ over the whole range and over its two halves, split at the log-frequency midpoint, and classified as in~\cite{agarwal2025}: \emph{stationary} (flat, most predictable), \emph{monofractal} (one straight line), \emph{multifractal} (the halves differ by $\ge0.5$; least predictable), plus an \emph{anti-persistent} class of ours for $\beta\le-0.3$. On the trace side, we report each miss's distance to the previous one, the \emph{stream share} (misses to the line after one of the previous 16) and the \emph{re-reference share} (misses to a line already missed).
+\textbf{Replay and characterization.} Each trace is replayed on all seven architectures with 1 core ($N=100$M) and 4 cores ($N=10$M per core; copies of the trace in disjoint address ranges, started together, sharing the LLC and DRAM), giving 112 results. Algorithm~\ref{alg:psd} records every DRAM command of a 60M-instruction replay on the five DRAM-backed systems and analyses the second half of the run time, after the first half has warmed the LLC; a completeness check discards recordings that lost commands. The gaps between consecutive commands, merged over all channels, form the \emph{inter-request time}, the service-side counterpart of the inter-packet arrival time of~\cite{agarwal2025}; zero gaps (commands in the same cycle on different channels) are kept. Its power spectral density $S(f)$ (Welch's method~\cite{welch1967}, Hann window, 50\% overlap, segments of 256--16,384 requests; $f$ in cycles per request, i.e.\ per sample) is averaged into 32 log-spaced bins and summarised by the least-squares slope $\beta$ of $S(f)\propto 1/f^{\beta}$ over the whole range and over its two halves, split at the log-frequency midpoint, and classified by the first rule that holds: \emph{multifractal} if $|\beta_{\mathrm{lo}}-\beta_{\mathrm{hi}}|\ge0.5$ (least predictable), \emph{anti-persistent} if $\beta\le-0.3$, \emph{stationary} if $|\beta|<0.3$ and $|\beta_{\mathrm{lo}}|,|\beta_{\mathrm{hi}}|<0.4$ (flat, most predictable), and \emph{monofractal} otherwise (one straight line). The interpretation follows~\cite{agarwal2025}; the thresholds and the anti-persistent class are ours. On the trace side, we report each miss's distance to the previous one, the \emph{stream share} (misses to the line after one of the previous 16) and the \emph{re-reference share} (misses to a line already missed).
 
 \begin{algorithm}[t]
 \caption{Controller-level characterization}
@@ -263,7 +263,7 @@ Fig.~\ref{fig:framework} shows the framework. Only the memory system differs bet
 %=====================================================================
 \section{Baselines and Experimental Setup}\label{sec:setup}
 %=====================================================================
-\textbf{Baselines.} GPU + HBM3 is the baseline of the AI study and CPU + DDR5 that of the SPEC study. A pin-bandwidth (datasheet) roofline is the baseline for the calibration, and published Groq and Cerebras token rates are an external reference for the two SRAM-only systems, whose per-operator overhead and hop latency are the only tuned parameters.
+\textbf{Baselines.} GPU + HBM3 is the baseline of the AI study and CPU + DDR5 that of the SPEC study. A pin-bandwidth (datasheet) roofline is the baseline for the calibration, and published batch-1 token rates (Groq: about 750 and 250 tokens/s on Llama-3.1-8B and 70B; Cerebras: about 1,800 and 450) are the calibration targets for the two SRAM-only systems, whose per-operator overhead and hop latency are the only tuned parameters.
 
 \textbf{Setup.} Ramulator~2.1 is built from source (commit \texttt{7bead6c}); the tracer uses clang/LLVM~23 with \texttt{-O2 -march=x86-64-v3} on SPEC CPU~2026 v1.0.1 \texttt{refrate} inputs, skipping 30B instructions, warming 100M and tracing 200M (LLVM IR instructions). The private caches are a 48\,KiB 12-way L1D and a 2\,MiB 16-way L2 (LRU, write-back); the replay core has a 128-entry window, 32 MSHRs and no prefetcher, and the LLC (LRU, 16--29 ways) has hit latencies from 56 cycles (CPU) to 800 (wafer). Table~\ref{tab:const} lists the inference-model constants. Fifteen unit tests check model sizes, bandwidth bounds, tracer instruction counts, LLC geometry, the PSD classifier on white and $1/f$ noise, and step-time accounting.
 
@@ -293,7 +293,7 @@ LPDDR5 & 205 & 198 (97) & 175 (85) & 150 (73) & 93 (45) & 92 (45)\\
 \end{table}
 
 \subsection{AI Inference}
-Decode is a memory-streaming problem: on every DRAM-based design memory takes 83--100\% of batch-1 decode time, and speed follows achieved bandwidth (Table~\ref{tab:llama}, Fig.~\ref{fig:speedup}). The HBM3 GPU reaches 91\% of its pin-bandwidth bound. SRAM-resident systems are much faster, but only by spreading the model over many chips; their modelled token rates are 0.76--1.9\tmx{} the published Groq and Cerebras figures. The bottleneck therefore moves rather than disappears (Fig.~\ref{fig:breakdown}): the LPU-class system spends 68--79\% of its time on all-reduce latency, and per chip it delivers only 1/12--1/37 of an HBM3 GPU's throughput. Once static power is counted it also uses 5--16\tmx{} the GPU's energy per batch-1 Llama token, even though its memory-access energy is 13--16\tmx{} lower. This all-reduce share is an upper bound, since we assume pure tensor parallelism (Section~\ref{sec:math}). Capacity-bound designs also hit cliffs: when the KV cache outgrows one wafer, throughput per wafer drops 2.3--2.9\tmx{}, while HBM systems degrade smoothly. Note that Fig.~\ref{fig:speedup} compares each system at its own minimum chip count: on Llama-70B at batch 32, one HBM4 GPU (0.79\tmx) is compared with three HBM3 GPUs.
+Decode is a memory-streaming problem: on every DRAM-based design memory takes 83--100\% of batch-1 decode time, and speed follows achieved bandwidth (Table~\ref{tab:llama}, Fig.~\ref{fig:speedup}). The HBM3 GPU reaches 91\% of its pin-bandwidth bound. SRAM-resident systems are much faster, but only by spreading the model over many chips; their modelled token rates are 0.76--1.9\tmx{} the published Groq and Cerebras figures. The bottleneck therefore moves rather than disappears (Fig.~\ref{fig:breakdown}): the LPU-class system spends 68--79\% of its time on all-reduce latency, and per chip it delivers only 1/12--1/37 of an HBM3 GPU's throughput. With static power it uses 5--16\tmx{} the GPU's energy per batch-1 Llama token, although its memory-access energy is 13--16\tmx{} lower. This all-reduce share is an upper bound, since we assume pure tensor parallelism (Section~\ref{sec:math}), and its split from per-operator overhead follows the calibrated $h$ and $\tau$. Small networks expose these fixed costs too: ResNet-50 at batch 1 is overhead-bound everywhere except on the CPU, so the mesh ($\tau=2\,\mu$s) beats the GPUs ($3\,\mu$s) and the wafer ($5\,\mu$s) is slowest, while at batch 64 the single-chip LPU is compute-bound at 188 TFLOPS. Capacity-bound designs also hit cliffs: when the KV cache outgrows one wafer, throughput per wafer drops 2.3--2.9\tmx{}, while HBM systems degrade smoothly. Fig.~\ref{fig:speedup} compares each system at its own minimum chip count, so capacity boundaries change device counts: on Llama-70B and Mixtral one HBM4 GPU is compared with two or three HBM3 GPUs (hence only 0.79--1.34\tmx), and the mesh uses 3--6 chips on Llama-70B, Mixtral and DLRM.
 
 \begin{table}[t]
 \caption{Llama-3.1-8B Decode, Batch 1, Context 2,048}
@@ -319,19 +319,19 @@ Wafer (SRAM) & 1 & 0.651 & 1,536 & 1,536 & 7.89\tmx & overhead\\
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.95\columnwidth]{figures/03_ai_latency_speedup.pdf}
-\caption{Step-latency speedup over GPU + HBM3; each system uses the minimum number of chips that holds the model.}
+\caption{Step-latency speedup over GPU + HBM3 (two significant figures); each system uses the minimum number of chips that holds the model.}
 \label{fig:speedup}
 \end{figure}
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.72\textwidth]{figures/06_time_breakdown.pdf}
+\includegraphics[width=0.62\textwidth]{figures/06_time_breakdown.pdf}
 \caption{Where step time goes: DRAM systems are memory-bound in decode and compute-bound in prefill; SRAM-only systems are bound by communication and synchronization.}
 \label{fig:breakdown}
 \end{figure*}
 
 \subsection{General-Purpose Code}
-For seven of the eight benchmarks the hot working set fits in every LLC, so DRAM traffic is almost identical across architectures and IPC follows LLC hit latency instead (Table~\ref{tab:spec}). Large, distant SRAMs hurt pointer-chasing codes most (omnetpp and nest lose 5--7\tmx{} on the wafer). Extra DRAM bandwidth buys nothing: HBM4 matches HBM3, because 4-wide cores with 32 MSHRs and no prefetcher cannot generate enough parallel misses (even 4-core lbm uses 61--67\,GB/s of HBM); throughput-oriented GPUs hide such latencies with many threads, which this study does not model. Capacity helps only bandwidth-heavy lbm, whose DRAM traffic the 208--232\,MiB LLCs cut threefold on 4 cores. The ranking follows SRAM latency, not AI performance: of the two fastest AI systems, the LPU (30\,ns SRAM) is the least affected non-CPU design (0.83\tmx) and the wafer (200\,ns) the most (0.32\tmx).
+For seven of the eight benchmarks the hot working set fits in every LLC, so DRAM traffic is almost identical across architectures and IPC follows LLC hit latency instead (Table~\ref{tab:spec}). Large, distant SRAMs hurt pointer-chasing codes most (omnetpp and nest lose 5--7\tmx{} on the wafer). Extra DRAM bandwidth buys nothing: HBM4 matches HBM3, because 4-wide cores with 32 MSHRs and no prefetcher cannot generate enough parallel misses: at most $4\times32$ 64\,B misses (8\,KiB) are in flight, so even 4-core lbm uses only 61--67\,GB/s of HBM. Throughput-oriented GPUs hide such latencies with many threads, which this study does not model. Capacity helps only bandwidth-heavy lbm: its 101 APKI on 4 cores falls to 32--36 with the 208--232\,MiB LLCs and to 29 with the wafer's 1\,GiB LLC (on 1 core, 43 APKI falls only on the wafer, to 29). The ranking follows SRAM latency, not AI performance: of the two fastest AI systems, the LPU (30\,ns SRAM) is the least affected non-CPU design (0.83\tmx) and the wafer (200\,ns) the most (0.32\tmx).
 
 \begin{table}[t]
 \caption{IPC Relative to CPU + DDR5 (1 Core) and Geomeans; APKI on CPU + DDR5}
@@ -361,11 +361,11 @@ LLC hit (cycles) & & 56 & 480 & 480 & 240 & 160 & 120 & 800\\
 \end{table}
 
 \subsection{Memory Access-Pattern Characterization}
-The L2-miss traces (Fig.~\ref{fig:spatial}, Table~\ref{tab:pattern}) fall into four families: streams (marian, sealcrypto), interleaved streams that stay within a page (lbm, the only bandwidth-bound trace), scattered reuse (omnetpp, nest) and sweeps plus scatter (stockfish, sqlite, zstd). Re-referenced misses hit in every LLC, which is why DRAM traffic barely changes across architectures.
+The L2-miss traces (Fig.~\ref{fig:spatial}, Table~\ref{tab:pattern}) fall into four families: streams (marian; sealcrypto, which interleaves streams more than 1\,MiB apart), interleaved streams that stay within a page (lbm, the only bandwidth-bound trace), scattered reuse (omnetpp, nest) and sweeps plus scatter (stockfish, sqlite, zstd). Re-referenced misses hit in every LLC, which is why DRAM traffic barely changes across architectures.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.72\textwidth]{figures/12_access_spatial.pdf}
+\includegraphics[width=0.62\textwidth]{figures/12_access_spatial.pdf}
 \caption{Address of every L2 miss over the 200M-instruction trace window (6,000 samples).}
 \label{fig:spatial}
 \end{figure*}
@@ -393,13 +393,13 @@ lbm & 57.89 & 17 / 1 & 5.9 & 0\% & 70\% & 20\% & 48\%\\
 \raggedright\scriptsize Gap in instructions between misses. Next = next 64\,B line; Page = other line in the same 4\,KiB page; Stream = stream share; Re-ref = re-reference share (Section~\ref{sec:method}).
 \end{table}
 
-At the memory controllers (Table~\ref{tab:mc}, Fig.~\ref{fig:psd}) the program, not the memory system, sets the shape of the request stream: for five of eight benchmarks $\beta$ varies by at most 0.05 across systems, and 33 of 40 pairs share their benchmark's majority class. Unlike the NoC study~\cite{agarwal2025}, where cache and buffer sizes changed the class, seven of the eight hot sets here fit in every LLC, so the memory system mainly rescales the timing; lbm, which does not fit, is anti-persistent on DDR5 and stationary elsewhere. sealcrypto and omnetpp are largely stationary, stockfish, sqlite and zstd monofractal, and marian and nest multifractal; marian shows a $1/f^2$ low-frequency trend and a period of about 13 requests from its layer-by-layer weight stream. Controller throughput follows IPC rather than DRAM bandwidth: it is highest on CPU + DDR5 and 1.2--3.8\tmx{} lower on the GPUs. Because the analysis window is the second half of the run \emph{time}, it covers different instructions on each system; throughputs are rates, and differences at equal IPC (e.g.\ lbm on HBM3 and HBM4) reflect the sampled program phase.
+At the memory controllers (Table~\ref{tab:mc}, Fig.~\ref{fig:psd}) the program, not the memory system, sets the shape of the request stream: for five of eight benchmarks $\beta$ varies by at most 0.05 across systems, and 33 of 40 pairs share their benchmark's majority class. This holds because seven of the eight hot sets fit in every LLC, so mostly compulsory misses reach DRAM; unlike in the NoC study~\cite{agarwal2025}, where cache and buffer sizes changed the class, the memory system then mainly rescales the timing. lbm, whose working set does not fit, changes class (anti-persistent on DDR5, stationary elsewhere), and the class changes of stockfish and zstd between narrow DRAMs and HBM may partly come from merging many more channels into one series. sealcrypto and omnetpp are largely stationary, stockfish, sqlite and zstd monofractal, and marian and nest multifractal; marian shows a $1/f^2$ low-frequency trend and a period of about 13 requests. Controller throughput follows IPC rather than DRAM bandwidth: it is highest on CPU + DDR5 and 1.2--3.8\tmx{} lower on the GPUs. Because the analysis window is the second half of the run \emph{time}, it covers different instructions on each system; throughputs are rates, and differences at equal IPC reflect the sampled program phase and, for lbm on HBM3 and HBM4, likely also LLC capacity (in a separate 20M-instruction replay, the 50\,MiB LLC wrote back 85,138 dirty lines that the 128\,MiB one kept).
 
 \begin{table*}[t]
 \caption{Memory-Controller Throughput (GB/s) and PSD Slope $\beta$ with Class (S = Stationary, M = Monofractal, MF = Multifractal, AP = Anti-Persistent). Classes also depend on the half-range slopes $\beta_{\mathrm{lo}}$, $\beta_{\mathrm{hi}}$ (not shown), so equal $\beta$ can give different classes.}
 \label{tab:mc}
 \centering
-\footnotesize
+\scriptsize
 \begin{tabular}{@{}lrrrrrcrrrrr@{}}
 \toprule
  & \multicolumn{5}{c}{Throughput (GB/s)} & & \multicolumn{5}{c}{$\beta$ (class)}\\
@@ -420,21 +420,21 @@ lbm & 15.95 & 8.42 & 5.96 & 8.21 & 8.26 & & $-$0.43 AP & $-$0.20 S & $-$0.19 S &
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.72\textwidth]{figures/14_mc_psd.pdf}
-\caption{Log-log PSD of the inter-request time at the memory controllers per benchmark and DRAM-backed architecture (cf.~\cite{agarwal2025}); frequency in cycles per request (Nyquist 0.5). marian's $\approx$4,250 requests limit its lowest resolvable frequency.}
+\includegraphics[width=0.62\textwidth]{figures/14_mc_psd.pdf}
+\caption{Log-log PSD of the inter-request time at the memory controllers per benchmark and DRAM-backed architecture (cf.~\cite{agarwal2025}); frequency in cycles per request, i.e.\ per sample of the series (Nyquist 0.5). marian's $\approx$4,250 requests limit its lowest resolvable frequency.}
 \label{fig:psd}
 \end{figure*}
 
-Row-buffer locality needs both a spatial pattern and few channels (Fig.~\ref{fig:locality}). Even the most local traces (sealcrypto, lbm) reach only 2--17\% row hits on 128-channel HBM4 but 22--55\% on 16-channel DDR5, because 64\,B interleaving spreads each stream across all channels, so a 4\,KiB page touches each HBM channel at most once: wide AI memory systems turn even sequential streams into row misses.
+Row-buffer locality needs both a spatial pattern and few channels (Fig.~\ref{fig:locality}). Even the most local traces (sealcrypto, lbm) reach only 2--17\% row hits on 128-channel HBM4 but 22--55\% on 16-channel DDR5, because 64\,B interleaving spreads each stream across all channels, so a 4\,KiB page touches each HBM channel at most once: wide AI memory systems turn even sequential streams into row misses. marian's near-zero hit rate despite its pure stream, and the LPU--wafer difference on the same host DDR5, remain unexplained.
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.72\textwidth]{figures/15_locality.pdf}
+\includegraphics[width=0.62\textwidth]{figures/15_locality.pdf}
 \caption{Left: distance of each L2 miss to the previous one. Right: DRAM row-buffer hit rate in the 1-core replays; SRAM-only designs reach a 2-channel host DDR5.}
 \label{fig:locality}
 \end{figure*}
 
-\textbf{Validation and limitations.} Calibrated bandwidth never exceeds pin bandwidth, and every controller-level replay recorded 100\% of the requests Ramulator served. Parameters are public-specification class values, and the AI model is analytical on top of cycle-accurate DRAM, with pure tensor parallelism and no GPU shared-memory staging. On the SPEC side, each benchmark contributes one 200M-instruction window, the 4-core runs use a short 10M-instruction warm-up with lockstep copies, the core has no prefetcher, and the IPC ratios scale with the assumed SRAM latencies (30--200\,ns). The controller-level PSD merges all channels into one series, which mixes cross-channel interleaving with per-controller burstiness; per-channel spectra are left for future work.
+\textbf{Validation and limitations.} Calibrated bandwidth never exceeds pin bandwidth, and every controller-level replay recorded 100\% of the requests Ramulator served. The main limitations are public-specification parameters, an analytical AI model with pure tensor parallelism and no GPU shared-memory staging, one 200M-instruction window per SPEC benchmark, short lockstep 4-core runs, a core without prefetcher whose IPC ratios scale with the assumed SRAM latencies, and a PSD that merges all channels into one series; per-channel spectra and hybrid parallelism are future work.
 
 %=====================================================================
 \section{Conclusion}\label{sec:conclusion}
