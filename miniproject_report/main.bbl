@@ -1,0 +1,178 @@
+\begin{thebibliography}{27}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Abts et~al.(2020)]{abts2020}
+Dennis Abts et~al.
+\newblock Think fast: A tensor streaming processor ({TSP}) for accelerating
+  deep learning workloads.
+\newblock In \emph{Proc. ACM/IEEE 47th Annual International Symposium on
+  Computer Architecture (ISCA)}, pages 145--158, 2020.
+
+\bibitem[Agarwal et~al.(2025)Agarwal, Goel, Sinha, and Deb]{agarwal2025}
+Sneha Agarwal, Keshav Goel, Mitali Sinha, and Sujay Deb.
+\newblock Towards improving memory access in large-scale {NoC}-based systems.
+\newblock In \emph{Proc. IEEE International Symposium on Circuits and Systems
+  (ISCAS)}, pages 1--5, 2025.
+\newblock \doi{10.1109/ISCAS56072.2025.11043968}.
+
+\bibitem[Bambhaniya et~al.(2024)]{bambhaniya2024}
+Abhimanyu Bambhaniya et~al.
+\newblock Demystifying platform requirements for diverse {LLM} inference use
+  cases.
+\newblock arXiv:2406.01698, 2024.
+
+\bibitem[Bogdan et~al.(2010)Bogdan, Kas, Marculescu, and Mutlu]{bogdan2010}
+Paul Bogdan, Miray Kas, Radu Marculescu, and Onur Mutlu.
+\newblock {QuaLe}: A quantum-leap inspired model for non-stationary analysis of
+  {NoC} traffic in chip multi-processors.
+\newblock In \emph{Proc. 4th ACM/IEEE International Symposium on
+  Networks-on-Chip (NOCS)}, pages 241--248, 2010.
+
+\bibitem[Choquette(2023)]{choquette2023}
+Jack Choquette.
+\newblock {NVIDIA} {Hopper} {H100} {GPU}: Scaling performance.
+\newblock \emph{IEEE Micro}, 43\penalty0 (3):\penalty0 9--17, 2023.
+
+\bibitem[Gholami et~al.(2024)Gholami, Yao, Kim, Hooper, Mahoney, and
+  Keutzer]{gholami2024}
+Amir Gholami, Zhewei Yao, Sehoon Kim, Coleman Hooper, Michael~W. Mahoney, and
+  Kurt Keutzer.
+\newblock {AI} and memory wall.
+\newblock \emph{IEEE Micro}, 44\penalty0 (3):\penalty0 33--39, 2024.
+
+\bibitem[Grattafiori et~al.(2024)]{llama3}
+Aaron Grattafiori et~al.
+\newblock The {Llama 3} herd of models.
+\newblock arXiv:2407.21783, 2024.
+
+\bibitem[He et~al.(2016)He, Zhang, Ren, and Sun]{he2016}
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+\newblock Deep residual learning for image recognition.
+\newblock In \emph{Proc. IEEE Conference on Computer Vision and Pattern
+  Recognition (CVPR)}, pages 770--778, 2016.
+
+\bibitem[Jiang et~al.(2024)]{jiang2024}
+Albert~Q. Jiang et~al.
+\newblock Mixtral of experts.
+\newblock arXiv:2401.04088, 2024.
+
+\bibitem[Jouppi et~al.(2017)]{jouppi2017}
+Norman~P. Jouppi et~al.
+\newblock In-datacenter performance analysis of a tensor processing unit.
+\newblock In \emph{Proc. 44th Annual International Symposium on Computer
+  Architecture (ISCA)}, pages 1--12, 2017.
+
+\bibitem[Kim et~al.(2016)Kim, Yang, and Mutlu]{kim2016}
+Yoongu Kim, Weikun Yang, and Onur Mutlu.
+\newblock Ramulator: A fast and extensible {DRAM} simulator.
+\newblock \emph{IEEE Computer Architecture Letters}, 15\penalty0 (1):\penalty0
+  45--49, 2016.
+
+\bibitem[Kwon et~al.(2023)]{kwon2023}
+Woosuk Kwon et~al.
+\newblock Efficient memory management for large language model serving with
+  {PagedAttention}.
+\newblock In \emph{Proc. 29th ACM Symposium on Operating Systems Principles
+  (SOSP)}, pages 611--626, 2023.
+
+\bibitem[Lattner and Adve(2004)]{lattner2004}
+Chris Lattner and Vikram Adve.
+\newblock {LLVM}: A compilation framework for lifelong program analysis \&
+  transformation.
+\newblock In \emph{Proc. International Symposium on Code Generation and
+  Optimization (CGO)}, pages 75--86, 2004.
+
+\bibitem[Lie(2023)]{lie2023}
+Sean Lie.
+\newblock Cerebras architecture deep dive: First look inside the
+  hardware/software co-design for deep learning.
+\newblock \emph{IEEE Micro}, 43\penalty0 (3):\penalty0 18--30, 2023.
+
+\bibitem[Limaye and Adegbija(2018)]{limaye2018}
+Ankur Limaye and Tosiron Adegbija.
+\newblock A workload characterization of the {SPEC CPU2017} benchmark suite.
+\newblock In \emph{Proc. IEEE International Symposium on Performance Analysis
+  of Systems and Software (ISPASS)}, pages 149--158, 2018.
+
+\bibitem[Luk et~al.(2005)]{luk2005}
+Chi-Keung Luk et~al.
+\newblock Pin: Building customized program analysis tools with dynamic
+  instrumentation.
+\newblock In \emph{Proc. ACM SIGPLAN Conference on Programming Language Design
+  and Implementation (PLDI)}, pages 190--200, 2005.
+
+\bibitem[Luo et~al.(2024)Luo, Tu{\u{g}}rul, Bostanc{\i}, Olgun,
+  Ya{\u{g}}l{\i}k{\c{c}}{\i}, and Mutlu]{luo2024}
+Haocong Luo, Yahya~Can Tu{\u{g}}rul, F.~Nisa Bostanc{\i}, Ataberk Olgun,
+  A.~Giray Ya{\u{g}}l{\i}k{\c{c}}{\i}, and Onur Mutlu.
+\newblock Ramulator 2.0: A modern, modular, and extensible {DRAM} simulator.
+\newblock \emph{IEEE Computer Architecture Letters}, 23\penalty0 (1):\penalty0
+  112--116, 2024.
+
+\bibitem[Naumov et~al.(2019)]{naumov2019}
+Maxim Naumov et~al.
+\newblock Deep learning recommendation model for personalization and
+  recommendation systems.
+\newblock arXiv:1906.00091, 2019.
+
+\bibitem[Pope et~al.(2023)]{pope2023}
+Reiner Pope et~al.
+\newblock Efficiently scaling transformer inference.
+\newblock In \emph{Proc. Machine Learning and Systems (MLSys)}, volume~5, 2023.
+
+\bibitem[Rixner et~al.(2000)Rixner, Dally, Kapasi, Mattson, and
+  Owens]{rixner2000}
+Scott Rixner, William~J. Dally, Ujval~J. Kapasi, Peter Mattson, and John~D.
+  Owens.
+\newblock Memory access scheduling.
+\newblock In \emph{Proc. 27th Annual International Symposium on Computer
+  Architecture (ISCA)}, pages 128--138, 2000.
+
+\bibitem[{Standard Performance Evaluation Corporation}(2026)]{spec2026}
+{Standard Performance Evaluation Corporation}.
+\newblock {SPEC CPU} 2026, version 1.0.1.
+\newblock \url{https://www.spec.org/}, 2026.
+
+\bibitem[Thakur et~al.(2005)Thakur, Rabenseifner, and Gropp]{thakur2005}
+Rajeev Thakur, Rolf Rabenseifner, and William Gropp.
+\newblock Optimization of collective communication operations in {MPICH}.
+\newblock \emph{International Journal of High Performance Computing
+  Applications}, 19\penalty0 (1):\penalty0 49--66, 2005.
+
+\bibitem[Vasiljevic et~al.(2021)]{vasiljevic2021}
+Jasmina Vasiljevic et~al.
+\newblock Compute substrate for {Software 2.0}.
+\newblock \emph{IEEE Micro}, 41\penalty0 (2):\penalty0 50--55, 2021.
+
+\bibitem[Welch(1967)]{welch1967}
+Peter~D. Welch.
+\newblock The use of fast {Fourier} transform for the estimation of power
+  spectra: A method based on time averaging over short, modified periodograms.
+\newblock \emph{IEEE Transactions on Audio and Electroacoustics}, 15\penalty0
+  (2):\penalty0 70--73, 1967.
+
+\bibitem[Williams et~al.(2009)Williams, Waterman, and Patterson]{williams2009}
+Samuel Williams, Andrew Waterman, and David Patterson.
+\newblock Roofline: An insightful visual performance model for multicore
+  architectures.
+\newblock \emph{Communications of the ACM}, 52\penalty0 (4):\penalty0 65--76,
+  2009.
+
+\bibitem[Wulf and McKee(1995)]{wulf1995}
+William~A. Wulf and Sally~A. McKee.
+\newblock Hitting the memory wall: Implications of the obvious.
+\newblock \emph{ACM SIGARCH Computer Architecture News}, 23\penalty0
+  (1):\penalty0 20--24, 1995.
+
+\bibitem[Zhang et~al.(2024)Zhang, Ning, Prabhakar, and Wentzlaff]{zhang2024}
+Hengrui Zhang, August Ning, Rohan~Baskar Prabhakar, and David Wentzlaff.
+\newblock {LLMCompass}: Enabling efficient hardware design for large language
+  model inference.
+\newblock In \emph{Proc. ACM/IEEE 51st Annual International Symposium on
+  Computer Architecture (ISCA)}, pages 1080--1096, 2024.
+
+\end{thebibliography}
